@@ -3,17 +3,16 @@ package br.com.mod.gestaomusical.service;
 import br.com.mod.gestaomusical.dto.HinarioRequestDTO;
 import br.com.mod.gestaomusical.dto.HinarioResponseDTO;
 import br.com.mod.gestaomusical.entity.Aluno;
-import br.com.mod.gestaomusical.entity.Auditoria;
 import br.com.mod.gestaomusical.entity.Hinario;
 import br.com.mod.gestaomusical.entity.Historico;
 import br.com.mod.gestaomusical.entity.Notificacao;
 import br.com.mod.gestaomusical.entity.Usuario;
 import br.com.mod.gestaomusical.repository.AlunoRepository;
-import br.com.mod.gestaomusical.repository.AuditoriaRepository;
 import br.com.mod.gestaomusical.repository.HinarioRepository;
 import br.com.mod.gestaomusical.repository.HistoricoRepository;
 import br.com.mod.gestaomusical.repository.NotificacaoRepository;
 import br.com.mod.gestaomusical.repository.UsuarioRepository;
+import br.com.mod.gestaomusical.security.UsuarioAutenticadoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,7 +38,8 @@ public class HinarioService {
     private final UsuarioRepository usuarioRepository;
     private final HistoricoRepository historicoRepository;
     private final NotificacaoRepository notificacaoRepository;
-    private final AuditoriaRepository auditoriaRepository;
+    private final AuditoriaService auditoriaService;
+    private final UsuarioAutenticadoService usuarioAutenticadoService;
 
     public HinarioService(
             HinarioRepository hinarioRepository,
@@ -47,18 +47,21 @@ public class HinarioService {
             UsuarioRepository usuarioRepository,
             HistoricoRepository historicoRepository,
             NotificacaoRepository notificacaoRepository,
-            AuditoriaRepository auditoriaRepository) {
+            AuditoriaService auditoriaService,
+            UsuarioAutenticadoService usuarioAutenticadoService) {
 
         this.hinarioRepository = hinarioRepository;
         this.alunoRepository = alunoRepository;
         this.usuarioRepository = usuarioRepository;
         this.historicoRepository = historicoRepository;
         this.notificacaoRepository = notificacaoRepository;
-        this.auditoriaRepository = auditoriaRepository;
+        this.auditoriaService = auditoriaService;
+        this.usuarioAutenticadoService = usuarioAutenticadoService;
     }
 
     @Transactional(readOnly = true)
     public List<HinarioResponseDTO> listarTodos() {
+
         return hinarioRepository.findAll()
                 .stream()
                 .map(this::converterParaDTO)
@@ -67,6 +70,7 @@ public class HinarioService {
 
     @Transactional(readOnly = true)
     public Optional<HinarioResponseDTO> buscarPorId(Long id) {
+
         return hinarioRepository.findById(id)
                 .map(this::converterParaDTO);
     }
@@ -89,12 +93,16 @@ public class HinarioService {
             );
         }
 
-        Usuario usuario = usuarioRepository.findById(dto.getUsuarioId())
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Usuário responsável pelo lançamento não encontrado"
-                ));
+        /*
+         * Usuário que realmente executou o lançamento.
+         * Obtido da autenticação do Spring Security.
+         */
+        Usuario usuario =
+                usuarioAutenticadoService.obterUsuarioAutenticado();
 
+        /*
+         * Usuário responsável pela autorização musical.
+         */
         Usuario autorizadoPor = usuarioRepository
                 .findById(dto.getAutorizadoPorUsuarioId())
                 .orElseThrow(() -> new ResponseStatusException(
@@ -112,7 +120,8 @@ public class HinarioService {
         hinario.setAutorizadoPorUsuario(autorizadoPor);
         hinario.setObservacoes(dto.getObservacoes());
 
-        Hinario hinarioSalvo = hinarioRepository.save(hinario);
+        Hinario hinarioSalvo =
+                hinarioRepository.save(hinario);
 
         criarHistorico(
                 hinarioSalvo,
@@ -128,9 +137,13 @@ public class HinarioService {
                 autorizadoPor
         );
 
-        criarAuditoria(
-                hinarioSalvo,
-                usuario
+        auditoriaService.registrar(
+                "REGISTRO_HINARIO",
+                "hinario",
+                hinarioSalvo.getId(),
+                "Registro de progresso em Hinário criado no MOD.",
+                null,
+                criarSnapshot(hinarioSalvo)
         );
 
         return converterParaDTO(hinarioSalvo);
@@ -142,13 +155,6 @@ public class HinarioService {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Aluno é obrigatório"
-            );
-        }
-
-        if (dto.getUsuarioId() == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Usuário responsável pelo lançamento é obrigatório"
             );
         }
 
@@ -186,7 +192,8 @@ public class HinarioService {
             );
         }
 
-        String valor = voz.trim().toUpperCase();
+        String valor =
+                voz.trim().toUpperCase();
 
         if (!VOZES_VALIDAS.contains(valor)) {
             throw new ResponseStatusException(
@@ -205,7 +212,8 @@ public class HinarioService {
             );
         }
 
-        String valor = clave.trim().toUpperCase();
+        String valor =
+                clave.trim().toUpperCase();
 
         if (!CLAVES_VALIDAS.contains(valor)) {
             throw new ResponseStatusException(
@@ -221,15 +229,19 @@ public class HinarioService {
             Usuario usuario,
             Usuario autorizadoPor) {
 
-        Historico historico = new Historico();
+        Historico historico =
+                new Historico();
 
         historico.setAluno(aluno);
         historico.setUsuario(usuario);
         historico.setTipoEvento("REGISTRO_HINARIO");
+
         historico.setDescricao(
                 "Progresso de Hinário registrado no MOD."
         );
+
         historico.setValorAnterior(null);
+
         historico.setValorNovo(
                 criarDescricaoProgresso(
                         hinario,
@@ -246,7 +258,8 @@ public class HinarioService {
             Usuario usuario,
             Usuario autorizadoPor) {
 
-        Notificacao notificacao = new Notificacao();
+        Notificacao notificacao =
+                new Notificacao();
 
         notificacao.setUsuario(usuario);
         notificacao.setAluno(aluno);
@@ -268,28 +281,6 @@ public class HinarioService {
         notificacao.setDataLeitura(null);
 
         notificacaoRepository.save(notificacao);
-    }
-
-    private void criarAuditoria(
-            Hinario hinario,
-            Usuario usuario) {
-
-        Auditoria auditoria = new Auditoria();
-
-        auditoria.setUsuario(usuario);
-        auditoria.setAcao("REGISTRO_HINARIO");
-        auditoria.setTabelaAfetada("hinario");
-        auditoria.setRegistroId(hinario.getId());
-        auditoria.setDescricao(
-                "Registro de progresso em Hinário criado no MOD."
-        );
-
-        auditoria.setDadosAnteriores(null);
-        auditoria.setDadosNovos(
-                criarSnapshot(hinario)
-        );
-
-        auditoriaRepository.save(auditoria);
     }
 
     private String criarDescricaoProgresso(
@@ -367,6 +358,7 @@ public class HinarioService {
         dto.setId(hinario.getId());
 
         if (hinario.getAluno() != null) {
+
             dto.setAlunoId(
                     hinario.getAluno().getId()
             );

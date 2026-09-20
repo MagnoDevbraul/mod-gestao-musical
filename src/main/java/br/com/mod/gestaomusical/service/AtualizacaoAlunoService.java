@@ -2,8 +2,17 @@ package br.com.mod.gestaomusical.service;
 
 import br.com.mod.gestaomusical.dto.AlunoResponseDTO;
 import br.com.mod.gestaomusical.dto.AtualizarAlunoRequestDTO;
-import br.com.mod.gestaomusical.entity.*;
-import br.com.mod.gestaomusical.repository.*;
+import br.com.mod.gestaomusical.entity.Aluno;
+import br.com.mod.gestaomusical.entity.Historico;
+import br.com.mod.gestaomusical.entity.Notificacao;
+import br.com.mod.gestaomusical.entity.Usuario;
+import br.com.mod.gestaomusical.repository.AlunoRepository;
+import br.com.mod.gestaomusical.repository.CargoMinisterioRepository;
+import br.com.mod.gestaomusical.repository.ComumCongregacaoRepository;
+import br.com.mod.gestaomusical.repository.HistoricoRepository;
+import br.com.mod.gestaomusical.repository.NivelRepository;
+import br.com.mod.gestaomusical.repository.NotificacaoRepository;
+import br.com.mod.gestaomusical.security.UsuarioAutenticadoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,32 +25,32 @@ import java.util.Map;
 public class AtualizacaoAlunoService {
 
     private final AlunoRepository alunoRepository;
-    private final UsuarioRepository usuarioRepository;
     private final ComumCongregacaoRepository comumRepository;
     private final NivelRepository nivelRepository;
     private final CargoMinisterioRepository cargoMinisterioRepository;
     private final HistoricoRepository historicoRepository;
     private final NotificacaoRepository notificacaoRepository;
-    private final AuditoriaRepository auditoriaRepository;
+    private final AuditoriaService auditoriaService;
+    private final UsuarioAutenticadoService usuarioAutenticadoService;
 
     public AtualizacaoAlunoService(
             AlunoRepository alunoRepository,
-            UsuarioRepository usuarioRepository,
             ComumCongregacaoRepository comumRepository,
             NivelRepository nivelRepository,
             CargoMinisterioRepository cargoMinisterioRepository,
             HistoricoRepository historicoRepository,
             NotificacaoRepository notificacaoRepository,
-            AuditoriaRepository auditoriaRepository) {
+            AuditoriaService auditoriaService,
+            UsuarioAutenticadoService usuarioAutenticadoService) {
 
         this.alunoRepository = alunoRepository;
-        this.usuarioRepository = usuarioRepository;
         this.comumRepository = comumRepository;
         this.nivelRepository = nivelRepository;
         this.cargoMinisterioRepository = cargoMinisterioRepository;
         this.historicoRepository = historicoRepository;
         this.notificacaoRepository = notificacaoRepository;
-        this.auditoriaRepository = auditoriaRepository;
+        this.auditoriaService = auditoriaService;
+        this.usuarioAutenticadoService = usuarioAutenticadoService;
     }
 
     @Transactional
@@ -55,12 +64,6 @@ public class AtualizacaoAlunoService {
                         "Aluno não encontrado"
                 ));
 
-        Usuario usuario = usuarioRepository.findById(dto.getUsuarioId())
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Usuário não encontrado"
-                ));
-
         if ("ARQUIVADO".equalsIgnoreCase(aluno.getSituacao())) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
@@ -68,16 +71,50 @@ public class AtualizacaoAlunoService {
             );
         }
 
-        if (dto.getNome() == null || dto.getNome().isBlank()) {
+        if (dto.getNome() == null
+                || dto.getNome().isBlank()) {
+
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Nome do aluno é obrigatório"
             );
         }
 
-        Map<String, Object> dadosAnteriores = criarSnapshot(aluno);
+        if (dto.getComumId() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Comum é obrigatória"
+            );
+        }
 
-        aluno.setNome(dto.getNome());
+        if (dto.getNivelId() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Nível é obrigatório"
+            );
+        }
+
+        if (dto.getCargoMinisterioId() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Cargo ministerial é obrigatório"
+            );
+        }
+
+        /*
+         * Usuário real que executou a alteração.
+         * Obtido da autenticação do Spring Security.
+         */
+        Usuario usuario =
+                usuarioAutenticadoService
+                        .obterUsuarioAutenticado();
+
+        Map<String, Object> dadosAnteriores =
+                criarSnapshot(aluno);
+
+        aluno.setNome(
+                dto.getNome().trim()
+        );
 
         aluno.setComum(
                 comumRepository.findById(dto.getComumId())
@@ -96,7 +133,8 @@ public class AtualizacaoAlunoService {
         );
 
         aluno.setCargoMinisterio(
-                cargoMinisterioRepository.findById(dto.getCargoMinisterioId())
+                cargoMinisterioRepository
+                        .findById(dto.getCargoMinisterioId())
                         .orElseThrow(() -> new ResponseStatusException(
                                 HttpStatus.NOT_FOUND,
                                 "Cargo ministerial não encontrado"
@@ -109,108 +147,215 @@ public class AtualizacaoAlunoService {
                         : false
         );
 
-        aluno.setDataBatismo(dto.getDataBatismo());
-        aluno.setDataInicioGem(dto.getDataInicioGem());
+        aluno.setDataBatismo(
+                dto.getDataBatismo()
+        );
 
-        Aluno alunoSalvo = alunoRepository.save(aluno);
+        aluno.setDataInicioGem(
+                dto.getDataInicioGem()
+        );
 
-        Map<String, Object> dadosNovos = criarSnapshot(alunoSalvo);
+        Aluno alunoSalvo =
+                alunoRepository.save(aluno);
 
-        Historico historico = new Historico();
+        Map<String, Object> dadosNovos =
+                criarSnapshot(alunoSalvo);
+
+        /*
+         * Histórico.
+         */
+        Historico historico =
+                new Historico();
+
         historico.setAluno(alunoSalvo);
         historico.setUsuario(usuario);
-        historico.setTipoEvento("ATUALIZACAO_ALUNO");
-        historico.setDescricao("Dados do aluno atualizados no MOD.");
-        historico.setValorAnterior(dadosAnteriores.toString());
-        historico.setValorNovo(dadosNovos.toString());
+        historico.setTipoEvento(
+                "ATUALIZACAO_ALUNO"
+        );
+
+        historico.setDescricao(
+                "Dados do aluno atualizados no MOD."
+        );
+
+        historico.setValorAnterior(
+                dadosAnteriores.toString()
+        );
+
+        historico.setValorNovo(
+                dadosNovos.toString()
+        );
 
         historicoRepository.save(historico);
 
-        Notificacao notificacao = new Notificacao();
+        /*
+         * Notificação.
+         */
+        Notificacao notificacao =
+                new Notificacao();
+
         notificacao.setUsuario(usuario);
         notificacao.setAluno(alunoSalvo);
-        notificacao.setTipoEvento("ATUALIZACAO_ALUNO");
-        notificacao.setTitulo("Aluno atualizado");
+        notificacao.setTipoEvento(
+                "ATUALIZACAO_ALUNO"
+        );
+
+        notificacao.setTitulo(
+                "Aluno atualizado"
+        );
+
         notificacao.setMensagem(
-                "Os dados do aluno " + alunoSalvo.getNome()
+                "Os dados do aluno "
+                        + alunoSalvo.getNome()
                         + " foram atualizados no MOD."
         );
+
         notificacao.setLida(false);
         notificacao.setDataLeitura(null);
 
         notificacaoRepository.save(notificacao);
 
-        Auditoria auditoria = new Auditoria();
-        auditoria.setUsuario(usuario);
-        auditoria.setAcao("ATUALIZACAO_ALUNO");
-        auditoria.setTabelaAfetada("aluno");
-        auditoria.setRegistroId(alunoSalvo.getId());
-        auditoria.setDescricao("Dados do aluno atualizados no MOD.");
-        auditoria.setDadosAnteriores(dadosAnteriores);
-        auditoria.setDadosNovos(dadosNovos);
-
-        auditoriaRepository.save(auditoria);
+        /*
+         * Auditoria.
+         * O usuário também é obtido automaticamente
+         * pelo AuditoriaService.
+         */
+        auditoriaService.registrar(
+                "ATUALIZACAO_ALUNO",
+                "aluno",
+                alunoSalvo.getId(),
+                "Dados do aluno atualizados no MOD.",
+                dadosAnteriores,
+                dadosNovos
+        );
 
         return converterParaDTO(alunoSalvo);
     }
 
-    private Map<String, Object> criarSnapshot(Aluno aluno) {
+    private Map<String, Object> criarSnapshot(
+            Aluno aluno) {
 
-        Map<String, Object> dados = new LinkedHashMap<>();
+        Map<String, Object> dados =
+                new LinkedHashMap<>();
 
-        dados.put("nome", aluno.getNome());
+        dados.put(
+                "nome",
+                aluno.getNome()
+        );
+
         dados.put(
                 "comumId",
-                aluno.getComum() != null ? aluno.getComum().getId() : null
+                aluno.getComum() != null
+                        ? aluno.getComum().getId()
+                        : null
         );
+
         dados.put(
                 "nivelId",
-                aluno.getNivel() != null ? aluno.getNivel().getId() : null
+                aluno.getNivel() != null
+                        ? aluno.getNivel().getId()
+                        : null
         );
+
         dados.put(
                 "cargoMinisterioId",
                 aluno.getCargoMinisterio() != null
                         ? aluno.getCargoMinisterio().getId()
                         : null
         );
-        dados.put("possuiInstrumento", aluno.getPossuiInstrumento());
-        dados.put("dataBatismo", aluno.getDataBatismo());
-        dados.put("dataInicioGem", aluno.getDataInicioGem());
-        dados.put("situacao", aluno.getSituacao());
+
+        dados.put(
+                "possuiInstrumento",
+                aluno.getPossuiInstrumento()
+        );
+
+        dados.put(
+                "dataBatismo",
+                aluno.getDataBatismo()
+        );
+
+        dados.put(
+                "dataInicioGem",
+                aluno.getDataInicioGem()
+        );
+
+        dados.put(
+                "situacao",
+                aluno.getSituacao()
+        );
 
         return dados;
     }
 
-    private AlunoResponseDTO converterParaDTO(Aluno aluno) {
+    private AlunoResponseDTO converterParaDTO(
+            Aluno aluno) {
 
-        AlunoResponseDTO dto = new AlunoResponseDTO();
+        AlunoResponseDTO dto =
+                new AlunoResponseDTO();
 
-        dto.setId(aluno.getId());
-        dto.setNome(aluno.getNome());
+        dto.setId(
+                aluno.getId()
+        );
+
+        dto.setNome(
+                aluno.getNome()
+        );
 
         if (aluno.getComum() != null) {
-            dto.setComumId(aluno.getComum().getId());
-            dto.setComumNome(aluno.getComum().getNome());
+
+            dto.setComumId(
+                    aluno.getComum().getId()
+            );
+
+            dto.setComumNome(
+                    aluno.getComum().getNome()
+            );
         }
 
         if (aluno.getNivel() != null) {
-            dto.setNivelId(aluno.getNivel().getId());
-            dto.setNivelNome(aluno.getNivel().getNome());
+
+            dto.setNivelId(
+                    aluno.getNivel().getId()
+            );
+
+            dto.setNivelNome(
+                    aluno.getNivel().getNome()
+            );
         }
 
         if (aluno.getCargoMinisterio() != null) {
-            dto.setCargoMinisterioId(aluno.getCargoMinisterio().getId());
+
+            dto.setCargoMinisterioId(
+                    aluno.getCargoMinisterio().getId()
+            );
+
             dto.setCargoMinisterioNome(
                     aluno.getCargoMinisterio().getNome()
             );
         }
 
-        dto.setPossuiInstrumento(aluno.getPossuiInstrumento());
-        dto.setDataBatismo(aluno.getDataBatismo());
-        dto.setDataInicioGem(aluno.getDataInicioGem());
-        dto.setSituacao(aluno.getSituacao());
-        dto.setCriadoEm(aluno.getCriadoEm());
-        dto.setAtualizadoEm(aluno.getAtualizadoEm());
+        dto.setPossuiInstrumento(
+                aluno.getPossuiInstrumento()
+        );
+
+        dto.setDataBatismo(
+                aluno.getDataBatismo()
+        );
+
+        dto.setDataInicioGem(
+                aluno.getDataInicioGem()
+        );
+
+        dto.setSituacao(
+                aluno.getSituacao()
+        );
+
+        dto.setCriadoEm(
+                aluno.getCriadoEm()
+        );
+
+        dto.setAtualizadoEm(
+                aluno.getAtualizadoEm()
+        );
 
         return dto;
     }

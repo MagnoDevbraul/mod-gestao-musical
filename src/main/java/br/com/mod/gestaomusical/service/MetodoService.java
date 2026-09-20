@@ -3,17 +3,16 @@ package br.com.mod.gestaomusical.service;
 import br.com.mod.gestaomusical.dto.MetodoRequestDTO;
 import br.com.mod.gestaomusical.dto.MetodoResponseDTO;
 import br.com.mod.gestaomusical.entity.Aluno;
-import br.com.mod.gestaomusical.entity.Auditoria;
 import br.com.mod.gestaomusical.entity.Historico;
 import br.com.mod.gestaomusical.entity.Metodo;
 import br.com.mod.gestaomusical.entity.Notificacao;
 import br.com.mod.gestaomusical.entity.Usuario;
 import br.com.mod.gestaomusical.repository.AlunoRepository;
-import br.com.mod.gestaomusical.repository.AuditoriaRepository;
 import br.com.mod.gestaomusical.repository.HistoricoRepository;
 import br.com.mod.gestaomusical.repository.MetodoRepository;
 import br.com.mod.gestaomusical.repository.NotificacaoRepository;
 import br.com.mod.gestaomusical.repository.UsuarioRepository;
+import br.com.mod.gestaomusical.security.UsuarioAutenticadoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,7 +35,8 @@ public class MetodoService {
     private final UsuarioRepository usuarioRepository;
     private final HistoricoRepository historicoRepository;
     private final NotificacaoRepository notificacaoRepository;
-    private final AuditoriaRepository auditoriaRepository;
+    private final AuditoriaService auditoriaService;
+    private final UsuarioAutenticadoService usuarioAutenticadoService;
 
     public MetodoService(
             MetodoRepository metodoRepository,
@@ -44,18 +44,21 @@ public class MetodoService {
             UsuarioRepository usuarioRepository,
             HistoricoRepository historicoRepository,
             NotificacaoRepository notificacaoRepository,
-            AuditoriaRepository auditoriaRepository) {
+            AuditoriaService auditoriaService,
+            UsuarioAutenticadoService usuarioAutenticadoService) {
 
         this.metodoRepository = metodoRepository;
         this.alunoRepository = alunoRepository;
         this.usuarioRepository = usuarioRepository;
         this.historicoRepository = historicoRepository;
         this.notificacaoRepository = notificacaoRepository;
-        this.auditoriaRepository = auditoriaRepository;
+        this.auditoriaService = auditoriaService;
+        this.usuarioAutenticadoService = usuarioAutenticadoService;
     }
 
     @Transactional(readOnly = true)
     public List<MetodoResponseDTO> listarTodos() {
+
         return metodoRepository.findAll()
                 .stream()
                 .map(this::converterParaDTO)
@@ -64,6 +67,7 @@ public class MetodoService {
 
     @Transactional(readOnly = true)
     public Optional<MetodoResponseDTO> buscarPorId(Long id) {
+
         return metodoRepository.findById(id)
                 .map(this::converterParaDTO);
     }
@@ -86,12 +90,17 @@ public class MetodoService {
             );
         }
 
-        Usuario usuario = usuarioRepository.findById(dto.getUsuarioId())
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Usuário responsável pelo lançamento não encontrado"
-                ));
+        /*
+         * Usuário que realmente executou o lançamento.
+         * Obtido da autenticação do Spring Security.
+         */
+        Usuario usuario =
+                usuarioAutenticadoService.obterUsuarioAutenticado();
 
+        /*
+         * Usuário que autorizou o progresso musical.
+         * Continua vindo do campo autorizadoPorUsuarioId.
+         */
         Usuario autorizadoPor = usuarioRepository
                 .findById(dto.getAutorizadoPorUsuarioId())
                 .orElseThrow(() -> new ResponseStatusException(
@@ -116,7 +125,8 @@ public class MetodoService {
 
         metodo.setObservacoes(dto.getObservacoes());
 
-        Metodo metodoSalvo = metodoRepository.save(metodo);
+        Metodo metodoSalvo =
+                metodoRepository.save(metodo);
 
         criarHistorico(
                 metodoSalvo,
@@ -132,9 +142,13 @@ public class MetodoService {
                 autorizadoPor
         );
 
-        criarAuditoria(
-                metodoSalvo,
-                usuario
+        auditoriaService.registrar(
+                "REGISTRO_METODO",
+                "metodo",
+                metodoSalvo.getId(),
+                "Registro de progresso em Método criado no MOD.",
+                null,
+                criarSnapshot(metodoSalvo)
         );
 
         return converterParaDTO(metodoSalvo);
@@ -146,13 +160,6 @@ public class MetodoService {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Aluno é obrigatório"
-            );
-        }
-
-        if (dto.getUsuarioId() == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Usuário responsável pelo lançamento é obrigatório"
             );
         }
 
@@ -253,7 +260,8 @@ public class MetodoService {
             );
         }
 
-        String valor = clave.trim().toUpperCase();
+        String valor =
+                clave.trim().toUpperCase();
 
         if (!CLAVES_VALIDAS.contains(valor)) {
             throw new ResponseStatusException(
@@ -269,15 +277,19 @@ public class MetodoService {
             Usuario usuario,
             Usuario autorizadoPor) {
 
-        Historico historico = new Historico();
+        Historico historico =
+                new Historico();
 
         historico.setAluno(aluno);
         historico.setUsuario(usuario);
         historico.setTipoEvento("REGISTRO_METODO");
+
         historico.setDescricao(
                 "Progresso de Método registrado no MOD."
         );
+
         historico.setValorAnterior(null);
+
         historico.setValorNovo(
                 criarDescricaoProgresso(
                         metodo,
@@ -294,7 +306,8 @@ public class MetodoService {
             Usuario usuario,
             Usuario autorizadoPor) {
 
-        Notificacao notificacao = new Notificacao();
+        Notificacao notificacao =
+                new Notificacao();
 
         notificacao.setUsuario(usuario);
         notificacao.setAluno(aluno);
@@ -316,28 +329,6 @@ public class MetodoService {
         notificacao.setDataLeitura(null);
 
         notificacaoRepository.save(notificacao);
-    }
-
-    private void criarAuditoria(
-            Metodo metodo,
-            Usuario usuario) {
-
-        Auditoria auditoria = new Auditoria();
-
-        auditoria.setUsuario(usuario);
-        auditoria.setAcao("REGISTRO_METODO");
-        auditoria.setTabelaAfetada("metodo");
-        auditoria.setRegistroId(metodo.getId());
-        auditoria.setDescricao(
-                "Registro de progresso em Método criado no MOD."
-        );
-
-        auditoria.setDadosAnteriores(null);
-        auditoria.setDadosNovos(
-                criarSnapshot(metodo)
-        );
-
-        auditoriaRepository.save(auditoria);
     }
 
     private String criarDescricaoProgresso(
@@ -436,6 +427,7 @@ public class MetodoService {
         dto.setId(metodo.getId());
 
         if (metodo.getAluno() != null) {
+
             dto.setAlunoId(
                     metodo.getAluno().getId()
             );
@@ -445,7 +437,10 @@ public class MetodoService {
             );
         }
 
-        dto.setData(metodo.getData());
+        dto.setData(
+                metodo.getData()
+        );
+
         dto.setNomeMetodo(
                 metodo.getNomeMetodo()
         );

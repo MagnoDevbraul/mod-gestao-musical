@@ -3,17 +3,16 @@ package br.com.mod.gestaomusical.service;
 import br.com.mod.gestaomusical.dto.MsaRequestDTO;
 import br.com.mod.gestaomusical.dto.MsaResponseDTO;
 import br.com.mod.gestaomusical.entity.Aluno;
-import br.com.mod.gestaomusical.entity.Auditoria;
 import br.com.mod.gestaomusical.entity.Historico;
 import br.com.mod.gestaomusical.entity.Msa;
 import br.com.mod.gestaomusical.entity.Notificacao;
 import br.com.mod.gestaomusical.entity.Usuario;
 import br.com.mod.gestaomusical.repository.AlunoRepository;
-import br.com.mod.gestaomusical.repository.AuditoriaRepository;
 import br.com.mod.gestaomusical.repository.HistoricoRepository;
 import br.com.mod.gestaomusical.repository.MsaRepository;
 import br.com.mod.gestaomusical.repository.NotificacaoRepository;
 import br.com.mod.gestaomusical.repository.UsuarioRepository;
+import br.com.mod.gestaomusical.security.UsuarioAutenticadoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,7 +35,8 @@ public class MsaService {
     private final UsuarioRepository usuarioRepository;
     private final HistoricoRepository historicoRepository;
     private final NotificacaoRepository notificacaoRepository;
-    private final AuditoriaRepository auditoriaRepository;
+    private final AuditoriaService auditoriaService;
+    private final UsuarioAutenticadoService usuarioAutenticadoService;
 
     public MsaService(
             MsaRepository msaRepository,
@@ -44,18 +44,21 @@ public class MsaService {
             UsuarioRepository usuarioRepository,
             HistoricoRepository historicoRepository,
             NotificacaoRepository notificacaoRepository,
-            AuditoriaRepository auditoriaRepository) {
+            AuditoriaService auditoriaService,
+            UsuarioAutenticadoService usuarioAutenticadoService) {
 
         this.msaRepository = msaRepository;
         this.alunoRepository = alunoRepository;
         this.usuarioRepository = usuarioRepository;
         this.historicoRepository = historicoRepository;
         this.notificacaoRepository = notificacaoRepository;
-        this.auditoriaRepository = auditoriaRepository;
+        this.auditoriaService = auditoriaService;
+        this.usuarioAutenticadoService = usuarioAutenticadoService;
     }
 
     @Transactional(readOnly = true)
     public List<MsaResponseDTO> listarTodos() {
+
         return msaRepository.findAll()
                 .stream()
                 .map(this::converterParaDTO)
@@ -64,6 +67,7 @@ public class MsaService {
 
     @Transactional(readOnly = true)
     public Optional<MsaResponseDTO> buscarPorId(Long id) {
+
         return msaRepository.findById(id)
                 .map(this::converterParaDTO);
     }
@@ -86,12 +90,17 @@ public class MsaService {
             );
         }
 
-        Usuario usuario = usuarioRepository.findById(dto.getUsuarioId())
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Usuário responsável pelo lançamento não encontrado"
-                ));
+        /*
+         * Usuário que realmente executou a operação.
+         * Obtido da autenticação do Spring Security.
+         */
+        Usuario usuario =
+                usuarioAutenticadoService.obterUsuarioAutenticado();
 
+        /*
+         * Usuário que autorizou o progresso musical.
+         * Continua sendo informado no registro de MSA.
+         */
         Usuario autorizadoPor = usuarioRepository
                 .findById(dto.getAutorizadoPorUsuarioId())
                 .orElseThrow(() -> new ResponseStatusException(
@@ -114,9 +123,28 @@ public class MsaService {
 
         Msa msaSalvo = msaRepository.save(msa);
 
-        criarHistorico(msaSalvo, aluno, usuario, autorizadoPor);
-        criarNotificacao(msaSalvo, aluno, usuario, autorizadoPor);
-        criarAuditoria(msaSalvo, usuario);
+        criarHistorico(
+                msaSalvo,
+                aluno,
+                usuario,
+                autorizadoPor
+        );
+
+        criarNotificacao(
+                msaSalvo,
+                aluno,
+                usuario,
+                autorizadoPor
+        );
+
+        auditoriaService.registrar(
+                "REGISTRO_MSA",
+                "msa",
+                msaSalvo.getId(),
+                "Registro de progresso em MSA criado no MOD.",
+                null,
+                criarSnapshot(msaSalvo)
+        );
 
         return converterParaDTO(msaSalvo);
     }
@@ -127,13 +155,6 @@ public class MsaService {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Aluno é obrigatório"
-            );
-        }
-
-        if (dto.getUsuarioId() == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Usuário responsável pelo lançamento é obrigatório"
             );
         }
 
@@ -153,8 +174,14 @@ public class MsaService {
 
         validarFase(dto.getFase());
         validarClave(dto.getClave());
-        validarPaginas(dto.getPaginaInicial(), dto.getPaginaFinal());
-        validarLicoes(dto.getLicaoInicial(), dto.getLicaoFinal());
+        validarPaginas(
+                dto.getPaginaInicial(),
+                dto.getPaginaFinal()
+        );
+        validarLicoes(
+                dto.getLicaoInicial(),
+                dto.getLicaoFinal()
+        );
     }
 
     private void validarFase(String fase) {
@@ -271,7 +298,10 @@ public class MsaService {
         );
         historico.setValorAnterior(null);
         historico.setValorNovo(
-                criarDescricaoProgresso(msa, autorizadoPor)
+                criarDescricaoProgresso(
+                        msa,
+                        autorizadoPor
+                )
         );
 
         historicoRepository.save(historico);
@@ -294,7 +324,10 @@ public class MsaService {
                 "Foi registrado progresso de MSA para o aluno "
                         + aluno.getNome()
                         + ": "
-                        + criarDescricaoProgresso(msa, autorizadoPor)
+                        + criarDescricaoProgresso(
+                        msa,
+                        autorizadoPor
+                )
                         + "."
         );
 
@@ -304,30 +337,12 @@ public class MsaService {
         notificacaoRepository.save(notificacao);
     }
 
-    private void criarAuditoria(
-            Msa msa,
-            Usuario usuario) {
-
-        Auditoria auditoria = new Auditoria();
-
-        auditoria.setUsuario(usuario);
-        auditoria.setAcao("REGISTRO_MSA");
-        auditoria.setTabelaAfetada("msa");
-        auditoria.setRegistroId(msa.getId());
-        auditoria.setDescricao(
-                "Registro de progresso em MSA criado no MOD."
-        );
-        auditoria.setDadosAnteriores(null);
-        auditoria.setDadosNovos(criarSnapshot(msa));
-
-        auditoriaRepository.save(auditoria);
-    }
-
     private String criarDescricaoProgresso(
             Msa msa,
             Usuario autorizadoPor) {
 
-        StringBuilder descricao = new StringBuilder();
+        StringBuilder descricao =
+                new StringBuilder();
 
         descricao.append("Fase ")
                 .append(msa.getFase());
@@ -357,18 +372,51 @@ public class MsaService {
 
     private Map<String, Object> criarSnapshot(Msa msa) {
 
-        Map<String, Object> dados = new LinkedHashMap<>();
+        Map<String, Object> dados =
+                new LinkedHashMap<>();
 
-        dados.put("alunoId", msa.getAluno().getId());
-        dados.put("data", msa.getData().toString());
-        dados.put("fase", msa.getFase());
-        dados.put("paginaInicial", msa.getPaginaInicial());
-        dados.put("paginaFinal", msa.getPaginaFinal());
-        dados.put("licaoInicial", msa.getLicaoInicial());
-        dados.put("licaoFinal", msa.getLicaoFinal());
-        dados.put("clave", msa.getClave());
+        dados.put(
+                "alunoId",
+                msa.getAluno().getId()
+        );
+
+        dados.put(
+                "data",
+                msa.getData().toString()
+        );
+
+        dados.put(
+                "fase",
+                msa.getFase()
+        );
+
+        dados.put(
+                "paginaInicial",
+                msa.getPaginaInicial()
+        );
+
+        dados.put(
+                "paginaFinal",
+                msa.getPaginaFinal()
+        );
+
+        dados.put(
+                "licaoInicial",
+                msa.getLicaoInicial()
+        );
+
+        dados.put(
+                "licaoFinal",
+                msa.getLicaoFinal()
+        );
+
+        dados.put(
+                "clave",
+                msa.getClave()
+        );
 
         if (msa.getAutorizadoPorUsuario() != null) {
+
             dados.put(
                     "autorizadoPorUsuarioId",
                     msa.getAutorizadoPorUsuario().getId()
@@ -380,34 +428,61 @@ public class MsaService {
             );
         }
 
-        dados.put("observacoes", msa.getObservacoes());
+        dados.put(
+                "observacoes",
+                msa.getObservacoes()
+        );
 
         return dados;
     }
 
     private MsaResponseDTO converterParaDTO(Msa msa) {
 
-        MsaResponseDTO dto = new MsaResponseDTO();
+        MsaResponseDTO dto =
+                new MsaResponseDTO();
 
         dto.setId(msa.getId());
 
         if (msa.getAluno() != null) {
-            dto.setAlunoId(msa.getAluno().getId());
-            dto.setAlunoNome(msa.getAluno().getNome());
+            dto.setAlunoId(
+                    msa.getAluno().getId()
+            );
+
+            dto.setAlunoNome(
+                    msa.getAluno().getNome()
+            );
         }
 
-        dto.setData(msa.getData());
-        dto.setFase(msa.getFase());
+        dto.setData(
+                msa.getData()
+        );
 
-        dto.setPaginaInicial(msa.getPaginaInicial());
-        dto.setPaginaFinal(msa.getPaginaFinal());
+        dto.setFase(
+                msa.getFase()
+        );
 
-        dto.setLicaoInicial(msa.getLicaoInicial());
-        dto.setLicaoFinal(msa.getLicaoFinal());
+        dto.setPaginaInicial(
+                msa.getPaginaInicial()
+        );
 
-        dto.setClave(msa.getClave());
+        dto.setPaginaFinal(
+                msa.getPaginaFinal()
+        );
+
+        dto.setLicaoInicial(
+                msa.getLicaoInicial()
+        );
+
+        dto.setLicaoFinal(
+                msa.getLicaoFinal()
+        );
+
+        dto.setClave(
+                msa.getClave()
+        );
 
         if (msa.getAutorizadoPorUsuario() != null) {
+
             dto.setAutorizadoPorUsuarioId(
                     msa.getAutorizadoPorUsuario().getId()
             );
@@ -417,9 +492,17 @@ public class MsaService {
             );
         }
 
-        dto.setObservacoes(msa.getObservacoes());
-        dto.setCriadoEm(msa.getCriadoEm());
-        dto.setAtualizadoEm(msa.getAtualizadoEm());
+        dto.setObservacoes(
+                msa.getObservacoes()
+        );
+
+        dto.setCriadoEm(
+                msa.getCriadoEm()
+        );
+
+        dto.setAtualizadoEm(
+                msa.getAtualizadoEm()
+        );
 
         return dto;
     }

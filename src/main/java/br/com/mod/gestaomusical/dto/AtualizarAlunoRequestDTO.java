@@ -4,8 +4,6 @@ import java.time.LocalDate;
 
 public class AtualizarAlunoRequestDTO {
 
-    private Long usuarioId;
-
     private String nome;
 
     private Long comumId;
@@ -18,14 +16,6 @@ public class AtualizarAlunoRequestDTO {
     private LocalDate dataInicioGem;
 
     public AtualizarAlunoRequestDTO() {
-    }
-
-    public Long getUsuarioId() {
-        return usuarioId;
-    }
-
-    public void setUsuarioId(Long usuarioId) {
-        this.usuarioId = usuarioId;
     }
 
     public String getNome() {

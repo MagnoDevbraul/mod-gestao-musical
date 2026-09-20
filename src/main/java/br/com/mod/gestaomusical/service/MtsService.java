@@ -3,17 +3,15 @@ package br.com.mod.gestaomusical.service;
 import br.com.mod.gestaomusical.dto.MtsRequestDTO;
 import br.com.mod.gestaomusical.dto.MtsResponseDTO;
 import br.com.mod.gestaomusical.entity.Aluno;
-import br.com.mod.gestaomusical.entity.Auditoria;
 import br.com.mod.gestaomusical.entity.Historico;
 import br.com.mod.gestaomusical.entity.Mts;
 import br.com.mod.gestaomusical.entity.Notificacao;
 import br.com.mod.gestaomusical.entity.Usuario;
 import br.com.mod.gestaomusical.repository.AlunoRepository;
-import br.com.mod.gestaomusical.repository.AuditoriaRepository;
 import br.com.mod.gestaomusical.repository.HistoricoRepository;
 import br.com.mod.gestaomusical.repository.MtsRepository;
 import br.com.mod.gestaomusical.repository.NotificacaoRepository;
-import br.com.mod.gestaomusical.repository.UsuarioRepository;
+import br.com.mod.gestaomusical.security.UsuarioAutenticadoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,29 +27,30 @@ public class MtsService {
 
     private final MtsRepository mtsRepository;
     private final AlunoRepository alunoRepository;
-    private final UsuarioRepository usuarioRepository;
     private final HistoricoRepository historicoRepository;
     private final NotificacaoRepository notificacaoRepository;
-    private final AuditoriaRepository auditoriaRepository;
+    private final AuditoriaService auditoriaService;
+    private final UsuarioAutenticadoService usuarioAutenticadoService;
 
     public MtsService(
             MtsRepository mtsRepository,
             AlunoRepository alunoRepository,
-            UsuarioRepository usuarioRepository,
             HistoricoRepository historicoRepository,
             NotificacaoRepository notificacaoRepository,
-            AuditoriaRepository auditoriaRepository) {
+            AuditoriaService auditoriaService,
+            UsuarioAutenticadoService usuarioAutenticadoService) {
 
         this.mtsRepository = mtsRepository;
         this.alunoRepository = alunoRepository;
-        this.usuarioRepository = usuarioRepository;
         this.historicoRepository = historicoRepository;
         this.notificacaoRepository = notificacaoRepository;
-        this.auditoriaRepository = auditoriaRepository;
+        this.auditoriaService = auditoriaService;
+        this.usuarioAutenticadoService = usuarioAutenticadoService;
     }
 
     @Transactional(readOnly = true)
     public List<MtsResponseDTO> listarTodos() {
+
         return mtsRepository.findAll()
                 .stream()
                 .map(this::converterParaDTO)
@@ -60,6 +59,7 @@ public class MtsService {
 
     @Transactional(readOnly = true)
     public Optional<MtsResponseDTO> buscarPorId(Long id) {
+
         return mtsRepository.findById(id)
                 .map(this::converterParaDTO);
     }
@@ -82,11 +82,14 @@ public class MtsService {
             );
         }
 
-        Usuario usuario = usuarioRepository.findById(dto.getUsuarioId())
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Usuário não encontrado"
-                ));
+        /*
+         * O usuário responsável pela operação agora é obtido
+         * diretamente da autenticação do Spring Security.
+         *
+         * Não confiamos mais em usuarioId enviado pelo JSON.
+         */
+        Usuario usuario =
+                usuarioAutenticadoService.obterUsuarioAutenticado();
 
         Mts mts = new Mts();
 
@@ -106,7 +109,9 @@ public class MtsService {
         historico.setAluno(aluno);
         historico.setUsuario(usuario);
         historico.setTipoEvento("REGISTRO_MTS");
-        historico.setDescricao("Progresso de MTS registrado no MOD.");
+        historico.setDescricao(
+                "Progresso de MTS registrado no MOD."
+        );
         historico.setValorAnterior(null);
 
         historico.setValorNovo(
@@ -148,20 +153,14 @@ public class MtsService {
         notificacaoRepository.save(notificacao);
 
         // AUDITORIA
-        Auditoria auditoria = new Auditoria();
-
-        auditoria.setUsuario(usuario);
-        auditoria.setAcao("REGISTRO_MTS");
-        auditoria.setTabelaAfetada("mts");
-        auditoria.setRegistroId(mtsSalvo.getId());
-        auditoria.setDescricao(
-                "Registro de progresso em MTS criado no MOD."
+        auditoriaService.registrar(
+                "REGISTRO_MTS",
+                "mts",
+                mtsSalvo.getId(),
+                "Registro de progresso em MTS criado no MOD.",
+                null,
+                criarSnapshot(mtsSalvo)
         );
-
-        auditoria.setDadosAnteriores(null);
-        auditoria.setDadosNovos(criarSnapshot(mtsSalvo));
-
-        auditoriaRepository.save(auditoria);
 
         return converterParaDTO(mtsSalvo);
     }
@@ -172,13 +171,6 @@ public class MtsService {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Aluno é obrigatório"
-            );
-        }
-
-        if (dto.getUsuarioId() == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Usuário é obrigatório"
             );
         }
 

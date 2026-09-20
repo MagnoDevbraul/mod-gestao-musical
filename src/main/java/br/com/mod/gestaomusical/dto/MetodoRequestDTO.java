@@ -6,9 +6,6 @@ public class MetodoRequestDTO {
 
     private Long alunoId;
 
-    // Usuário que realizou o lançamento no MOD
-    private Long usuarioId;
-
     // Usuário que autorizou o conteúdo musical
     private Long autorizadoPorUsuarioId;
 
@@ -33,14 +30,6 @@ public class MetodoRequestDTO {
 
     public void setAlunoId(Long alunoId) {
         this.alunoId = alunoId;
-    }
-
-    public Long getUsuarioId() {
-        return usuarioId;
-    }
-
-    public void setUsuarioId(Long usuarioId) {
-        this.usuarioId = usuarioId;
     }
 
     public Long getAutorizadoPorUsuarioId() {

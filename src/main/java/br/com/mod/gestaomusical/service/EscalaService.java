@@ -3,19 +3,18 @@ package br.com.mod.gestaomusical.service;
 import br.com.mod.gestaomusical.dto.EscalaRequestDTO;
 import br.com.mod.gestaomusical.dto.EscalaResponseDTO;
 import br.com.mod.gestaomusical.entity.Aluno;
-import br.com.mod.gestaomusical.entity.Auditoria;
 import br.com.mod.gestaomusical.entity.Escala;
 import br.com.mod.gestaomusical.entity.Historico;
 import br.com.mod.gestaomusical.entity.Notificacao;
 import br.com.mod.gestaomusical.entity.Tonalidade;
 import br.com.mod.gestaomusical.entity.Usuario;
 import br.com.mod.gestaomusical.repository.AlunoRepository;
-import br.com.mod.gestaomusical.repository.AuditoriaRepository;
 import br.com.mod.gestaomusical.repository.EscalaRepository;
 import br.com.mod.gestaomusical.repository.HistoricoRepository;
 import br.com.mod.gestaomusical.repository.NotificacaoRepository;
 import br.com.mod.gestaomusical.repository.TonalidadeRepository;
 import br.com.mod.gestaomusical.repository.UsuarioRepository;
+import br.com.mod.gestaomusical.security.UsuarioAutenticadoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,7 +38,8 @@ public class EscalaService {
     private final UsuarioRepository usuarioRepository;
     private final HistoricoRepository historicoRepository;
     private final NotificacaoRepository notificacaoRepository;
-    private final AuditoriaRepository auditoriaRepository;
+    private final AuditoriaService auditoriaService;
+    private final UsuarioAutenticadoService usuarioAutenticadoService;
 
     public EscalaService(
             EscalaRepository escalaRepository,
@@ -48,7 +48,8 @@ public class EscalaService {
             UsuarioRepository usuarioRepository,
             HistoricoRepository historicoRepository,
             NotificacaoRepository notificacaoRepository,
-            AuditoriaRepository auditoriaRepository) {
+            AuditoriaService auditoriaService,
+            UsuarioAutenticadoService usuarioAutenticadoService) {
 
         this.escalaRepository = escalaRepository;
         this.alunoRepository = alunoRepository;
@@ -56,11 +57,13 @@ public class EscalaService {
         this.usuarioRepository = usuarioRepository;
         this.historicoRepository = historicoRepository;
         this.notificacaoRepository = notificacaoRepository;
-        this.auditoriaRepository = auditoriaRepository;
+        this.auditoriaService = auditoriaService;
+        this.usuarioAutenticadoService = usuarioAutenticadoService;
     }
 
     @Transactional(readOnly = true)
     public List<EscalaResponseDTO> listarTodos() {
+
         return escalaRepository.findAll()
                 .stream()
                 .map(this::converterParaDTO)
@@ -69,6 +72,7 @@ public class EscalaService {
 
     @Transactional(readOnly = true)
     public Optional<EscalaResponseDTO> buscarPorId(Long id) {
+
         return escalaRepository.findById(id)
                 .map(this::converterParaDTO);
     }
@@ -98,13 +102,16 @@ public class EscalaService {
                         "Tonalidade não encontrada"
                 ));
 
-        Usuario usuario = usuarioRepository
-                .findById(dto.getUsuarioId())
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Usuário responsável pelo lançamento não encontrado"
-                ));
+        /*
+         * Usuário que realmente executou o lançamento.
+         * Obtido da autenticação do Spring Security.
+         */
+        Usuario usuario =
+                usuarioAutenticadoService.obterUsuarioAutenticado();
 
+        /*
+         * Usuário responsável pela autorização musical.
+         */
         Usuario autorizadoPor = usuarioRepository
                 .findById(dto.getAutorizadoPorUsuarioId())
                 .orElseThrow(() -> new ResponseStatusException(
@@ -122,7 +129,8 @@ public class EscalaService {
         escala.setAutorizadoPorUsuario(autorizadoPor);
         escala.setObservacoes(dto.getObservacoes());
 
-        Escala escalaSalva = escalaRepository.save(escala);
+        Escala escalaSalva =
+                escalaRepository.save(escala);
 
         criarHistorico(
                 escalaSalva,
@@ -138,9 +146,13 @@ public class EscalaService {
                 autorizadoPor
         );
 
-        criarAuditoria(
-                escalaSalva,
-                usuario
+        auditoriaService.registrar(
+                "REGISTRO_ESCALA",
+                "escala",
+                escalaSalva.getId(),
+                "Registro de progresso em Escala criado no MOD.",
+                null,
+                criarSnapshot(escalaSalva)
         );
 
         return converterParaDTO(escalaSalva);
@@ -152,13 +164,6 @@ public class EscalaService {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Aluno é obrigatório"
-            );
-        }
-
-        if (dto.getUsuarioId() == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Usuário responsável pelo lançamento é obrigatório"
             );
         }
 
@@ -204,7 +209,8 @@ public class EscalaService {
             );
         }
 
-        String valor = clave.trim().toUpperCase();
+        String valor =
+                clave.trim().toUpperCase();
 
         if (!CLAVES_VALIDAS.contains(valor)) {
             throw new ResponseStatusException(
@@ -220,15 +226,19 @@ public class EscalaService {
             Usuario usuario,
             Usuario autorizadoPor) {
 
-        Historico historico = new Historico();
+        Historico historico =
+                new Historico();
 
         historico.setAluno(aluno);
         historico.setUsuario(usuario);
         historico.setTipoEvento("REGISTRO_ESCALA");
+
         historico.setDescricao(
                 "Progresso de Escala registrado no MOD."
         );
+
         historico.setValorAnterior(null);
+
         historico.setValorNovo(
                 criarDescricaoProgresso(
                         escala,
@@ -245,7 +255,8 @@ public class EscalaService {
             Usuario usuario,
             Usuario autorizadoPor) {
 
-        Notificacao notificacao = new Notificacao();
+        Notificacao notificacao =
+                new Notificacao();
 
         notificacao.setUsuario(usuario);
         notificacao.setAluno(aluno);
@@ -267,28 +278,6 @@ public class EscalaService {
         notificacao.setDataLeitura(null);
 
         notificacaoRepository.save(notificacao);
-    }
-
-    private void criarAuditoria(
-            Escala escala,
-            Usuario usuario) {
-
-        Auditoria auditoria = new Auditoria();
-
-        auditoria.setUsuario(usuario);
-        auditoria.setAcao("REGISTRO_ESCALA");
-        auditoria.setTabelaAfetada("escala");
-        auditoria.setRegistroId(escala.getId());
-        auditoria.setDescricao(
-                "Registro de progresso em Escala criado no MOD."
-        );
-
-        auditoria.setDadosAnteriores(null);
-        auditoria.setDadosNovos(
-                criarSnapshot(escala)
-        );
-
-        auditoriaRepository.save(auditoria);
     }
 
     private String criarDescricaoProgresso(
@@ -371,6 +360,7 @@ public class EscalaService {
         dto.setId(escala.getId());
 
         if (escala.getAluno() != null) {
+
             dto.setAlunoId(
                     escala.getAluno().getId()
             );
@@ -389,6 +379,7 @@ public class EscalaService {
         );
 
         if (escala.getTonalidade() != null) {
+
             dto.setTonalidadeId(
                     escala.getTonalidade().getId()
             );

@@ -5,7 +5,6 @@ import java.time.LocalDate;
 public class MtsRequestDTO {
 
     private Long alunoId;
-    private Long usuarioId;
 
     private LocalDate data;
     private Integer modulo;
@@ -23,14 +22,6 @@ public class MtsRequestDTO {
 
     public void setAlunoId(Long alunoId) {
         this.alunoId = alunoId;
-    }
-
-    public Long getUsuarioId() {
-        return usuarioId;
-    }
-
-    public void setUsuarioId(Long usuarioId) {
-        this.usuarioId = usuarioId;
     }
 
     public LocalDate getData() {

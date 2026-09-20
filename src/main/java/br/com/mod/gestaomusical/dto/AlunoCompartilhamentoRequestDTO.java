@@ -5,9 +5,6 @@ public class AlunoCompartilhamentoRequestDTO {
     private Long alunoId;
     private Long comumDestinoId;
 
-    // Usuário que realizou o compartilhamento
-    private Long usuarioId;
-
     public AlunoCompartilhamentoRequestDTO() {
     }
 
@@ -25,13 +22,5 @@ public class AlunoCompartilhamentoRequestDTO {
 
     public void setComumDestinoId(Long comumDestinoId) {
         this.comumDestinoId = comumDestinoId;
-    }
-
-    public Long getUsuarioId() {
-        return usuarioId;
-    }
-
-    public void setUsuarioId(Long usuarioId) {
-        this.usuarioId = usuarioId;
     }
 }
