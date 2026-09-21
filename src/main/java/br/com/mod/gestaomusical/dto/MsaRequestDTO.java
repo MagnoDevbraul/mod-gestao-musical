@@ -6,7 +6,15 @@ public class MsaRequestDTO {
 
     private Long alunoId;
 
-    // Usuário que autorizou o conteúdo musical
+    /*
+     * Campo opcional.
+     *
+     * Quando não informado, o próprio usuário autenticado
+     * será utilizado como autorizador musical.
+     *
+     * Secretaria e Encarregado Regional podem informar outro
+     * usuário, sujeito às regras de perfil, setor e sessão ativa.
+     */
     private Long autorizadoPorUsuarioId;
 
     private LocalDate data;

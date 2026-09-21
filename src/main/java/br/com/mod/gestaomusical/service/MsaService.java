@@ -11,7 +11,6 @@ import br.com.mod.gestaomusical.repository.AlunoRepository;
 import br.com.mod.gestaomusical.repository.HistoricoRepository;
 import br.com.mod.gestaomusical.repository.MsaRepository;
 import br.com.mod.gestaomusical.repository.NotificacaoRepository;
-import br.com.mod.gestaomusical.repository.UsuarioRepository;
 import br.com.mod.gestaomusical.security.UsuarioAutenticadoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -32,28 +31,28 @@ public class MsaService {
 
     private final MsaRepository msaRepository;
     private final AlunoRepository alunoRepository;
-    private final UsuarioRepository usuarioRepository;
     private final HistoricoRepository historicoRepository;
     private final NotificacaoRepository notificacaoRepository;
     private final AuditoriaService auditoriaService;
     private final UsuarioAutenticadoService usuarioAutenticadoService;
+    private final AutorizadorMusicalService autorizadorMusicalService;
 
     public MsaService(
             MsaRepository msaRepository,
             AlunoRepository alunoRepository,
-            UsuarioRepository usuarioRepository,
             HistoricoRepository historicoRepository,
             NotificacaoRepository notificacaoRepository,
             AuditoriaService auditoriaService,
-            UsuarioAutenticadoService usuarioAutenticadoService) {
+            UsuarioAutenticadoService usuarioAutenticadoService,
+            AutorizadorMusicalService autorizadorMusicalService) {
 
         this.msaRepository = msaRepository;
         this.alunoRepository = alunoRepository;
-        this.usuarioRepository = usuarioRepository;
         this.historicoRepository = historicoRepository;
         this.notificacaoRepository = notificacaoRepository;
         this.auditoriaService = auditoriaService;
         this.usuarioAutenticadoService = usuarioAutenticadoService;
+        this.autorizadorMusicalService = autorizadorMusicalService;
     }
 
     @Transactional(readOnly = true)
@@ -91,22 +90,24 @@ public class MsaService {
         }
 
         /*
-         * Usuário que realmente executou a operação.
-         * Obtido da autenticação do Spring Security.
+         * Autor da operação.
+         * Sempre corresponde ao usuário realmente autenticado.
          */
         Usuario usuario =
                 usuarioAutenticadoService.obterUsuarioAutenticado();
 
         /*
-         * Usuário que autorizou o progresso musical.
-         * Continua sendo informado no registro de MSA.
+         * Resolve o autorizador musical conforme as regras de perfil.
+         *
+         * Se nenhum ID for informado, o próprio usuário autenticado
+         * será utilizado. Somente Secretaria e Encarregado Regional
+         * podem indicar outra pessoa.
          */
-        Usuario autorizadoPor = usuarioRepository
-                .findById(dto.getAutorizadoPorUsuarioId())
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Usuário informado em 'Autorizado por' não encontrado"
-                ));
+        Usuario autorizadoPor =
+                autorizadorMusicalService.resolverAutorizador(
+                        usuario,
+                        dto.getAutorizadoPorUsuarioId()
+                );
 
         Msa msa = new Msa();
 
@@ -158,12 +159,11 @@ public class MsaService {
             );
         }
 
-        if (dto.getAutorizadoPorUsuarioId() == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Autorizado por é obrigatório"
-            );
-        }
+        /*
+         * autorizadoPorUsuarioId não é obrigatório.
+         * Sua ausência significa que o próprio usuário autenticado
+         * está autorizando o progresso musical.
+         */
 
         if (dto.getData() == null) {
             throw new ResponseStatusException(
@@ -174,10 +174,12 @@ public class MsaService {
 
         validarFase(dto.getFase());
         validarClave(dto.getClave());
+
         validarPaginas(
                 dto.getPaginaInicial(),
                 dto.getPaginaFinal()
         );
+
         validarLicoes(
                 dto.getLicaoInicial(),
                 dto.getLicaoFinal()
@@ -291,12 +293,21 @@ public class MsaService {
         Historico historico = new Historico();
 
         historico.setAluno(aluno);
+
+        /*
+         * O histórico registra quem realmente executou a operação,
+         * independentemente de quem autorizou o conteúdo musical.
+         */
         historico.setUsuario(usuario);
+
         historico.setTipoEvento("REGISTRO_MSA");
+
         historico.setDescricao(
                 "Progresso de MSA registrado no MOD."
         );
+
         historico.setValorAnterior(null);
+
         historico.setValorNovo(
                 criarDescricaoProgresso(
                         msa,
@@ -444,6 +455,7 @@ public class MsaService {
         dto.setId(msa.getId());
 
         if (msa.getAluno() != null) {
+
             dto.setAlunoId(
                     msa.getAluno().getId()
             );
