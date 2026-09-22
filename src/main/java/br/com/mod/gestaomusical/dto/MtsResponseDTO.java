@@ -10,6 +10,9 @@ public class MtsResponseDTO {
     private Long alunoId;
     private String alunoNome;
 
+    private Long autorizadoPorUsuarioId;
+    private String autorizadoPorUsuarioNome;
+
     private LocalDate data;
     private Integer modulo;
     private Integer licao;
@@ -45,6 +48,28 @@ public class MtsResponseDTO {
 
     public void setAlunoNome(String alunoNome) {
         this.alunoNome = alunoNome;
+    }
+
+    public Long getAutorizadoPorUsuarioId() {
+        return autorizadoPorUsuarioId;
+    }
+
+    public void setAutorizadoPorUsuarioId(
+            Long autorizadoPorUsuarioId) {
+
+        this.autorizadoPorUsuarioId =
+                autorizadoPorUsuarioId;
+    }
+
+    public String getAutorizadoPorUsuarioNome() {
+        return autorizadoPorUsuarioNome;
+    }
+
+    public void setAutorizadoPorUsuarioNome(
+            String autorizadoPorUsuarioNome) {
+
+        this.autorizadoPorUsuarioNome =
+                autorizadoPorUsuarioNome;
     }
 
     public LocalDate getData() {

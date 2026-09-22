@@ -1,0 +1,8 @@
+package br.com.mod.gestaomusical.repository;
+
+import br.com.mod.gestaomusical.entity.Setor;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface SetorRepository
+        extends JpaRepository<Setor, Long> {
+}

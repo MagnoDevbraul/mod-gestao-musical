@@ -11,7 +11,6 @@ import br.com.mod.gestaomusical.repository.AlunoRepository;
 import br.com.mod.gestaomusical.repository.HinarioRepository;
 import br.com.mod.gestaomusical.repository.HistoricoRepository;
 import br.com.mod.gestaomusical.repository.NotificacaoRepository;
-import br.com.mod.gestaomusical.repository.UsuarioRepository;
 import br.com.mod.gestaomusical.security.UsuarioAutenticadoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -35,28 +34,28 @@ public class HinarioService {
 
     private final HinarioRepository hinarioRepository;
     private final AlunoRepository alunoRepository;
-    private final UsuarioRepository usuarioRepository;
     private final HistoricoRepository historicoRepository;
     private final NotificacaoRepository notificacaoRepository;
     private final AuditoriaService auditoriaService;
     private final UsuarioAutenticadoService usuarioAutenticadoService;
+    private final AutorizadorMusicalService autorizadorMusicalService;
 
     public HinarioService(
             HinarioRepository hinarioRepository,
             AlunoRepository alunoRepository,
-            UsuarioRepository usuarioRepository,
             HistoricoRepository historicoRepository,
             NotificacaoRepository notificacaoRepository,
             AuditoriaService auditoriaService,
-            UsuarioAutenticadoService usuarioAutenticadoService) {
+            UsuarioAutenticadoService usuarioAutenticadoService,
+            AutorizadorMusicalService autorizadorMusicalService) {
 
         this.hinarioRepository = hinarioRepository;
         this.alunoRepository = alunoRepository;
-        this.usuarioRepository = usuarioRepository;
         this.historicoRepository = historicoRepository;
         this.notificacaoRepository = notificacaoRepository;
         this.auditoriaService = auditoriaService;
         this.usuarioAutenticadoService = usuarioAutenticadoService;
+        this.autorizadorMusicalService = autorizadorMusicalService;
     }
 
     @Transactional(readOnly = true)
@@ -94,21 +93,24 @@ public class HinarioService {
         }
 
         /*
-         * Usuário que realmente executou o lançamento.
-         * Obtido da autenticação do Spring Security.
+         * Autor da operação.
+         * Sempre corresponde ao usuário realmente autenticado.
          */
         Usuario usuario =
                 usuarioAutenticadoService.obterUsuarioAutenticado();
 
         /*
-         * Usuário responsável pela autorização musical.
+         * Resolve quem será registrado como autorizador musical.
+         *
+         * Quando nenhum ID é informado, utiliza o próprio usuário
+         * autenticado. A indicação de terceiros é validada pelo
+         * AutorizadorMusicalService.
          */
-        Usuario autorizadoPor = usuarioRepository
-                .findById(dto.getAutorizadoPorUsuarioId())
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Usuário informado em 'Autorizado por' não encontrado"
-                ));
+        Usuario autorizadoPor =
+                autorizadorMusicalService.resolverAutorizador(
+                        usuario,
+                        dto.getAutorizadoPorUsuarioId()
+                );
 
         Hinario hinario = new Hinario();
 
@@ -158,12 +160,11 @@ public class HinarioService {
             );
         }
 
-        if (dto.getAutorizadoPorUsuarioId() == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Autorizado por é obrigatório"
-            );
-        }
+        /*
+         * autorizadoPorUsuarioId é opcional.
+         * Quando ausente, o próprio usuário autenticado
+         * será utilizado como autorizador.
+         */
 
         if (dto.getData() == null) {
             throw new ResponseStatusException(
@@ -233,7 +234,13 @@ public class HinarioService {
                 new Historico();
 
         historico.setAluno(aluno);
+
+        /*
+         * O histórico registra o executor real da operação,
+         * independentemente de quem autorizou o progresso musical.
+         */
         historico.setUsuario(usuario);
+
         historico.setTipoEvento("REGISTRO_HINARIO");
 
         historico.setDescricao(

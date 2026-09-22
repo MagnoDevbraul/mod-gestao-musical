@@ -31,6 +31,7 @@ public class MtsService {
     private final NotificacaoRepository notificacaoRepository;
     private final AuditoriaService auditoriaService;
     private final UsuarioAutenticadoService usuarioAutenticadoService;
+    private final AutorizadorMusicalService autorizadorMusicalService;
 
     public MtsService(
             MtsRepository mtsRepository,
@@ -38,7 +39,8 @@ public class MtsService {
             HistoricoRepository historicoRepository,
             NotificacaoRepository notificacaoRepository,
             AuditoriaService auditoriaService,
-            UsuarioAutenticadoService usuarioAutenticadoService) {
+            UsuarioAutenticadoService usuarioAutenticadoService,
+            AutorizadorMusicalService autorizadorMusicalService) {
 
         this.mtsRepository = mtsRepository;
         this.alunoRepository = alunoRepository;
@@ -46,6 +48,7 @@ public class MtsService {
         this.notificacaoRepository = notificacaoRepository;
         this.auditoriaService = auditoriaService;
         this.usuarioAutenticadoService = usuarioAutenticadoService;
+        this.autorizadorMusicalService = autorizadorMusicalService;
     }
 
     @Transactional(readOnly = true)
@@ -83,13 +86,21 @@ public class MtsService {
         }
 
         /*
-         * O usuário responsável pela operação agora é obtido
-         * diretamente da autenticação do Spring Security.
-         *
-         * Não confiamos mais em usuarioId enviado pelo JSON.
+         * Autor da operação.
+         * Sempre corresponde ao usuário realmente autenticado.
          */
         Usuario usuario =
                 usuarioAutenticadoService.obterUsuarioAutenticado();
+
+        /*
+         * Resolve o autorizador musical utilizando a mesma regra
+         * aplicada aos demais módulos de progresso musical.
+         */
+        Usuario autorizadoPor =
+                autorizadorMusicalService.resolverAutorizador(
+                        usuario,
+                        dto.getAutorizadoPorUsuarioId()
+                );
 
         Mts mts = new Mts();
 
@@ -99,60 +110,26 @@ public class MtsService {
         mts.setLicao(dto.getLicao());
         mts.setPaginaInicial(dto.getPaginaInicial());
         mts.setPaginaFinal(dto.getPaginaFinal());
+        mts.setAutorizadoPorUsuario(autorizadoPor);
         mts.setObservacoes(dto.getObservacoes());
 
-        Mts mtsSalvo = mtsRepository.save(mts);
+        Mts mtsSalvo =
+                mtsRepository.save(mts);
 
-        // HISTÓRICO
-        Historico historico = new Historico();
-
-        historico.setAluno(aluno);
-        historico.setUsuario(usuario);
-        historico.setTipoEvento("REGISTRO_MTS");
-        historico.setDescricao(
-                "Progresso de MTS registrado no MOD."
-        );
-        historico.setValorAnterior(null);
-
-        historico.setValorNovo(
-                "Módulo " + mtsSalvo.getModulo()
-                        + " - Lição " + mtsSalvo.getLicao()
-                        + " - Páginas "
-                        + mtsSalvo.getPaginaInicial()
-                        + " a "
-                        + mtsSalvo.getPaginaFinal()
+        criarHistorico(
+                mtsSalvo,
+                aluno,
+                usuario,
+                autorizadoPor
         );
 
-        historicoRepository.save(historico);
-
-        // NOTIFICAÇÃO
-        Notificacao notificacao = new Notificacao();
-
-        notificacao.setUsuario(usuario);
-        notificacao.setAluno(aluno);
-        notificacao.setTipoEvento("REGISTRO_MTS");
-        notificacao.setTitulo("MTS registrado");
-
-        notificacao.setMensagem(
-                "Foi registrado progresso de MTS para o aluno "
-                        + aluno.getNome()
-                        + ": módulo "
-                        + mtsSalvo.getModulo()
-                        + ", lição "
-                        + mtsSalvo.getLicao()
-                        + ", páginas "
-                        + mtsSalvo.getPaginaInicial()
-                        + " a "
-                        + mtsSalvo.getPaginaFinal()
-                        + "."
+        criarNotificacao(
+                mtsSalvo,
+                aluno,
+                usuario,
+                autorizadoPor
         );
 
-        notificacao.setLida(false);
-        notificacao.setDataLeitura(null);
-
-        notificacaoRepository.save(notificacao);
-
-        // AUDITORIA
         auditoriaService.registrar(
                 "REGISTRO_MTS",
                 "mts",
@@ -174,6 +151,12 @@ public class MtsService {
             );
         }
 
+        /*
+         * autorizadoPorUsuarioId é opcional.
+         * Quando ausente, o próprio usuário autenticado
+         * será utilizado como autorizador.
+         */
+
         if (dto.getData() == null) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
@@ -191,7 +174,9 @@ public class MtsService {
             );
         }
 
-        if (dto.getLicao() == null || dto.getLicao() < 0) {
+        if (dto.getLicao() == null
+                || dto.getLicao() < 0) {
+
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Lição deve ser maior ou igual a 0"
@@ -226,7 +211,9 @@ public class MtsService {
             );
         }
 
-        if (dto.getPaginaFinal() < dto.getPaginaInicial()) {
+        if (dto.getPaginaFinal()
+                < dto.getPaginaInicial()) {
+
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Página final não pode ser menor que a página inicial"
@@ -234,40 +221,209 @@ public class MtsService {
         }
     }
 
-    private Map<String, Object> criarSnapshot(Mts mts) {
+    private void criarHistorico(
+            Mts mts,
+            Aluno aluno,
+            Usuario usuario,
+            Usuario autorizadoPor) {
 
-        Map<String, Object> dados = new LinkedHashMap<>();
+        Historico historico =
+                new Historico();
 
-        dados.put("alunoId", mts.getAluno().getId());
-        dados.put("data", mts.getData().toString());
-        dados.put("modulo", mts.getModulo());
-        dados.put("licao", mts.getLicao());
-        dados.put("paginaInicial", mts.getPaginaInicial());
-        dados.put("paginaFinal", mts.getPaginaFinal());
-        dados.put("observacoes", mts.getObservacoes());
+        historico.setAluno(aluno);
+
+        /*
+         * O histórico registra quem executou a operação.
+         * O autorizador musical permanece registrado separadamente
+         * no próprio MTS e na descrição do progresso.
+         */
+        historico.setUsuario(usuario);
+
+        historico.setTipoEvento(
+                "REGISTRO_MTS"
+        );
+
+        historico.setDescricao(
+                "Progresso de MTS registrado no MOD."
+        );
+
+        historico.setValorAnterior(null);
+
+        historico.setValorNovo(
+                criarDescricaoProgresso(
+                        mts,
+                        autorizadoPor
+                )
+        );
+
+        historicoRepository.save(historico);
+    }
+
+    private void criarNotificacao(
+            Mts mts,
+            Aluno aluno,
+            Usuario usuario,
+            Usuario autorizadoPor) {
+
+        Notificacao notificacao =
+                new Notificacao();
+
+        notificacao.setUsuario(usuario);
+        notificacao.setAluno(aluno);
+        notificacao.setTipoEvento("REGISTRO_MTS");
+        notificacao.setTitulo("MTS registrado");
+
+        notificacao.setMensagem(
+                "Foi registrado progresso de MTS para o aluno "
+                        + aluno.getNome()
+                        + ": "
+                        + criarDescricaoProgresso(
+                        mts,
+                        autorizadoPor
+                )
+                        + "."
+        );
+
+        notificacao.setLida(false);
+        notificacao.setDataLeitura(null);
+
+        notificacaoRepository.save(notificacao);
+    }
+
+    private String criarDescricaoProgresso(
+            Mts mts,
+            Usuario autorizadoPor) {
+
+        return "Módulo "
+                + mts.getModulo()
+                + " - Lição "
+                + mts.getLicao()
+                + " - Páginas "
+                + mts.getPaginaInicial()
+                + " a "
+                + mts.getPaginaFinal()
+                + " - Autorizado por "
+                + autorizadoPor.getNome();
+    }
+
+    private Map<String, Object> criarSnapshot(
+            Mts mts) {
+
+        Map<String, Object> dados =
+                new LinkedHashMap<>();
+
+        dados.put(
+                "alunoId",
+                mts.getAluno().getId()
+        );
+
+        dados.put(
+                "data",
+                mts.getData().toString()
+        );
+
+        dados.put(
+                "modulo",
+                mts.getModulo()
+        );
+
+        dados.put(
+                "licao",
+                mts.getLicao()
+        );
+
+        dados.put(
+                "paginaInicial",
+                mts.getPaginaInicial()
+        );
+
+        dados.put(
+                "paginaFinal",
+                mts.getPaginaFinal()
+        );
+
+        if (mts.getAutorizadoPorUsuario() != null) {
+
+            dados.put(
+                    "autorizadoPorUsuarioId",
+                    mts.getAutorizadoPorUsuario().getId()
+            );
+
+            dados.put(
+                    "autorizadoPorUsuarioNome",
+                    mts.getAutorizadoPorUsuario().getNome()
+            );
+        }
+
+        dados.put(
+                "observacoes",
+                mts.getObservacoes()
+        );
 
         return dados;
     }
 
-    private MtsResponseDTO converterParaDTO(Mts mts) {
+    private MtsResponseDTO converterParaDTO(
+            Mts mts) {
 
-        MtsResponseDTO dto = new MtsResponseDTO();
+        MtsResponseDTO dto =
+                new MtsResponseDTO();
 
         dto.setId(mts.getId());
 
         if (mts.getAluno() != null) {
-            dto.setAlunoId(mts.getAluno().getId());
-            dto.setAlunoNome(mts.getAluno().getNome());
+
+            dto.setAlunoId(
+                    mts.getAluno().getId()
+            );
+
+            dto.setAlunoNome(
+                    mts.getAluno().getNome()
+            );
         }
 
-        dto.setData(mts.getData());
-        dto.setModulo(mts.getModulo());
-        dto.setLicao(mts.getLicao());
-        dto.setPaginaInicial(mts.getPaginaInicial());
-        dto.setPaginaFinal(mts.getPaginaFinal());
-        dto.setObservacoes(mts.getObservacoes());
-        dto.setCriadoEm(mts.getCriadoEm());
-        dto.setAtualizadoEm(mts.getAtualizadoEm());
+        if (mts.getAutorizadoPorUsuario() != null) {
+
+            dto.setAutorizadoPorUsuarioId(
+                    mts.getAutorizadoPorUsuario().getId()
+            );
+
+            dto.setAutorizadoPorUsuarioNome(
+                    mts.getAutorizadoPorUsuario().getNome()
+            );
+        }
+
+        dto.setData(
+                mts.getData()
+        );
+
+        dto.setModulo(
+                mts.getModulo()
+        );
+
+        dto.setLicao(
+                mts.getLicao()
+        );
+
+        dto.setPaginaInicial(
+                mts.getPaginaInicial()
+        );
+
+        dto.setPaginaFinal(
+                mts.getPaginaFinal()
+        );
+
+        dto.setObservacoes(
+                mts.getObservacoes()
+        );
+
+        dto.setCriadoEm(
+                mts.getCriadoEm()
+        );
+
+        dto.setAtualizadoEm(
+                mts.getAtualizadoEm()
+        );
 
         return dto;
     }

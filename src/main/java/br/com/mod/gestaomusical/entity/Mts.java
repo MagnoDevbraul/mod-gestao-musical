@@ -32,6 +32,16 @@ public class Mts {
     @Column(name = "pagina_final")
     private Integer paginaFinal;
 
+    /*
+     * Usuário responsável pela autorização musical.
+     *
+     * A coluna aceita NULL para preservar compatibilidade
+     * com registros antigos de MTS criados antes desta regra.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "autorizado_por_usuario_id")
+    private Usuario autorizadoPorUsuario;
+
     @Column(name = "observacoes")
     private String observacoes;
 
@@ -100,6 +110,17 @@ public class Mts {
         this.paginaFinal = paginaFinal;
     }
 
+    public Usuario getAutorizadoPorUsuario() {
+        return autorizadoPorUsuario;
+    }
+
+    public void setAutorizadoPorUsuario(
+            Usuario autorizadoPorUsuario) {
+
+        this.autorizadoPorUsuario =
+                autorizadoPorUsuario;
+    }
+
     public String getObservacoes() {
         return observacoes;
     }
@@ -126,7 +147,9 @@ public class Mts {
 
     @PrePersist
     protected void aoCriar() {
-        LocalDateTime agora = LocalDateTime.now();
+
+        LocalDateTime agora =
+                LocalDateTime.now();
 
         this.criadoEm = agora;
         this.atualizadoEm = agora;
@@ -134,6 +157,8 @@ public class Mts {
 
     @PreUpdate
     protected void aoAtualizar() {
-        this.atualizadoEm = LocalDateTime.now();
+
+        this.atualizadoEm =
+                LocalDateTime.now();
     }
 }

@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 42ivXAWNq71kAHHZxmUvIwwxCMzNqOGSg91nDTF9ARsHGSmLAWac2eO2AXAEASZ
+\restrict vxbvayeMKT5J283hRFoQbVs3ANWSouBmtKuy3w6TPmY0SX4BgwaZE1whrnXIE1O
 
 -- Dumped from database version 17.10
 -- Dumped by pg_dump version 17.10
@@ -457,6 +457,7 @@ CREATE TABLE public.mts (
     atualizado_em timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     pagina_inicial integer,
     pagina_final integer,
+    autorizado_por_usuario_id bigint,
     CONSTRAINT ck_mts_intervalo_paginas CHECK (((pagina_inicial IS NULL) OR (pagina_final IS NULL) OR (pagina_final >= pagina_inicial))),
     CONSTRAINT ck_mts_licao CHECK ((licao >= 0)),
     CONSTRAINT ck_mts_modulo CHECK (((modulo >= 1) AND (modulo <= 12))),
@@ -1172,6 +1173,13 @@ ALTER TABLE ONLY public.usuario_setor
 
 
 --
+-- Name: idx_mts_autorizado_por_usuario; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_mts_autorizado_por_usuario ON public.mts USING btree (autorizado_por_usuario_id);
+
+
+--
 -- Name: aluno fk_aluno_cargo_ministerio; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1372,6 +1380,14 @@ ALTER TABLE ONLY public.mts
 
 
 --
+-- Name: mts fk_mts_autorizado_por_usuario; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.mts
+    ADD CONSTRAINT fk_mts_autorizado_por_usuario FOREIGN KEY (autorizado_por_usuario_id) REFERENCES public.usuario(id);
+
+
+--
 -- Name: notificacao fk_notificacao_aluno; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1439,5 +1455,5 @@ ALTER TABLE ONLY public.usuario_setor
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 42ivXAWNq71kAHHZxmUvIwwxCMzNqOGSg91nDTF9ARsHGSmLAWac2eO2AXAEASZ
+\unrestrict vxbvayeMKT5J283hRFoQbVs3ANWSouBmtKuy3w6TPmY0SX4BgwaZE1whrnXIE1O
 

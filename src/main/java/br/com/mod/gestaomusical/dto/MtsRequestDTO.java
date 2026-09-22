@@ -6,6 +6,17 @@ public class MtsRequestDTO {
 
     private Long alunoId;
 
+    /*
+     * Campo opcional.
+     *
+     * Quando não informado, o próprio usuário autenticado
+     * será utilizado como autorizador musical.
+     *
+     * Secretaria e Encarregado Regional podem indicar outro
+     * usuário, sujeito às regras de perfil, setor e sessão ativa.
+     */
+    private Long autorizadoPorUsuarioId;
+
     private LocalDate data;
     private Integer modulo;
     private Integer licao;
@@ -22,6 +33,17 @@ public class MtsRequestDTO {
 
     public void setAlunoId(Long alunoId) {
         this.alunoId = alunoId;
+    }
+
+    public Long getAutorizadoPorUsuarioId() {
+        return autorizadoPorUsuarioId;
+    }
+
+    public void setAutorizadoPorUsuarioId(
+            Long autorizadoPorUsuarioId) {
+
+        this.autorizadoPorUsuarioId =
+                autorizadoPorUsuarioId;
     }
 
     public LocalDate getData() {
