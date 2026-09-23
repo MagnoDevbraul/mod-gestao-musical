@@ -4,18 +4,15 @@ import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
 
-import java.util.HashSet;
-import java.util.Set;
-
 @Entity
-@Table(name = "perfil_usuario")
-public class PerfilUsuario {
+@Table(name = "permissao")
+public class Permissao {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "nome", nullable = false)
+    @Column(name = "nome", nullable = false, unique = true)
     private String nome;
 
     @Column(name = "descricao")
@@ -30,15 +27,7 @@ public class PerfilUsuario {
     @Column(name = "atualizado_em", nullable = false)
     private LocalDateTime atualizadoEm;
 
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-            name = "perfil_usuario_permissao",
-            joinColumns = @JoinColumn(name = "perfil_usuario_id"),
-            inverseJoinColumns = @JoinColumn(name = "permissao_id")
-    )
-    private Set<Permissao> permissoes = new HashSet<>();
-
-    public PerfilUsuario() {
+    public Permissao() {
     }
 
     public Long getId() {
@@ -87,13 +76,5 @@ public class PerfilUsuario {
 
     public void setAtualizadoEm(LocalDateTime atualizadoEm) {
         this.atualizadoEm = atualizadoEm;
-    }
-
-    public Set<Permissao> getPermissoes() {
-        return permissoes;
-    }
-
-    public void setPermissoes(Set<Permissao> permissoes) {
-        this.permissoes = permissoes;
     }
 }

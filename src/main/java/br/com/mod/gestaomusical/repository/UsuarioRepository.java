@@ -13,6 +13,9 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
             String nomePerfil
     );
 
-    @EntityGraph(attributePaths = "perfilUsuario")
+    @EntityGraph(attributePaths = {
+            "perfilUsuario",
+            "perfilUsuario.permissoes"
+    })
     Optional<Usuario> findByEmailIgnoreCase(String email);
 }

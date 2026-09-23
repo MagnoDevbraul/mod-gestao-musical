@@ -1,11 +1,17 @@
 package br.com.mod.gestaomusical.security;
 
+import br.com.mod.gestaomusical.entity.Permissao;
 import br.com.mod.gestaomusical.entity.Usuario;
 import br.com.mod.gestaomusical.repository.UsuarioRepository;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class UsuarioUserDetailsService implements UserDetailsService {
 
@@ -41,10 +47,42 @@ public class UsuarioUserDetailsService implements UserDetailsService {
             );
         }
 
+        List<GrantedAuthority> authorities = new ArrayList<>();
+
+        /*
+         * Mantém o perfil do usuário como ROLE.
+         *
+         * Exemplo:
+         * SECRETARIA -> ROLE_SECRETARIA
+         */
+        authorities.add(
+                new SimpleGrantedAuthority(
+                        "ROLE_" + usuario.getPerfilUsuario().getNome()
+                )
+        );
+
+        /*
+         * Adiciona somente as permissões ativas
+         * vinculadas ao perfil do usuário.
+         *
+         * Exemplo:
+         * AUDITORIA_CONSULTAR
+         */
+        usuario.getPerfilUsuario()
+                .getPermissoes()
+                .stream()
+                .filter(permissao ->
+                        Boolean.TRUE.equals(permissao.getAtivo())
+                )
+                .map(Permissao::getNome)
+                .map(SimpleGrantedAuthority::new)
+                .forEach(authorities::add);
+
+
         return User.builder()
                 .username(usuario.getEmail())
                 .password(usuario.getSenha())
-                .roles(usuario.getPerfilUsuario().getNome())
+                .authorities(authorities)
                 .disabled(!Boolean.TRUE.equals(usuario.getAtivo()))
                 .build();
     }
