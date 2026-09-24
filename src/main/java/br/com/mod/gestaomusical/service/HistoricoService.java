@@ -12,14 +12,30 @@ import java.util.Optional;
 @Service
 public class HistoricoService {
 
+    private static final List<String> EVENTOS_DESENVOLVIMENTO_MUSICAL =
+            List.of(
+                    "REGISTRO_MSA",
+                    "REGISTRO_MTS",
+                    "REGISTRO_METODO",
+                    "REGISTRO_HINARIO",
+                    "REGISTRO_ESCALA"
+            );
+
     private final HistoricoRepository historicoRepository;
 
     public HistoricoService(
             HistoricoRepository historicoRepository) {
 
-        this.historicoRepository = historicoRepository;
+        this.historicoRepository =
+                historicoRepository;
     }
 
+    /*
+     * Consulta administrativa completa.
+     *
+     * O acesso é controlado no Controller
+     * pela permissão AUDITORIA_CONSULTAR.
+     */
     @Transactional(readOnly = true)
     public List<HistoricoResponseDTO> listarTodos() {
 
@@ -29,12 +45,40 @@ public class HistoricoService {
                 .toList();
     }
 
+    /*
+     * Consulta administrativa por ID.
+     */
     @Transactional(readOnly = true)
     public Optional<HistoricoResponseDTO> buscarPorId(
             Long id) {
 
         return historicoRepository.findById(id)
                 .map(this::converterParaDTO);
+    }
+
+    /*
+     * Histórico de desenvolvimento musical
+     * de um aluno.
+     *
+     * Retorna somente:
+     * - MSA
+     * - MTS
+     * - Método
+     * - Hinário
+     * - Escala
+     */
+    @Transactional(readOnly = true)
+    public List<HistoricoResponseDTO> listarDesenvolvimentoAluno(
+            Long alunoId) {
+
+        return historicoRepository
+                .findByAluno_IdAndTipoEventoInOrderByDataHoraDesc(
+                        alunoId,
+                        EVENTOS_DESENVOLVIMENTO_MUSICAL
+                )
+                .stream()
+                .map(this::converterParaDTO)
+                .toList();
     }
 
     private HistoricoResponseDTO converterParaDTO(

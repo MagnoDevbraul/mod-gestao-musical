@@ -7,6 +7,7 @@ import br.com.mod.gestaomusical.service.AlunoService;
 import br.com.mod.gestaomusical.service.AtualizacaoAlunoService;
 import br.com.mod.gestaomusical.service.RestauracaoAlunoService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -30,6 +31,7 @@ public class AlunoController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAuthority('ALUNO_CONSULTAR')")
     public ResponseEntity<List<AlunoResponseDTO>> listarTodos() {
 
         return ResponseEntity.ok(
@@ -38,6 +40,7 @@ public class AlunoController {
     }
 
     @GetMapping("/arquivados")
+    @PreAuthorize("hasAuthority('ALUNO_CONSULTAR')")
     public ResponseEntity<List<AlunoResponseDTO>> listarArquivados() {
 
         return ResponseEntity.ok(
@@ -46,6 +49,7 @@ public class AlunoController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('ALUNO_CONSULTAR')")
     public ResponseEntity<AlunoResponseDTO> buscarPorId(
             @PathVariable Long id) {
 
@@ -55,6 +59,7 @@ public class AlunoController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('ALUNO_CADASTRAR')")
     public ResponseEntity<AlunoResponseDTO> salvar(
             @RequestBody AlunoRequestDTO dto) {
 
@@ -67,6 +72,7 @@ public class AlunoController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('ALUNO_EDITAR')")
     public ResponseEntity<AlunoResponseDTO> atualizar(
             @PathVariable Long id,
             @RequestBody AtualizarAlunoRequestDTO dto) {
@@ -77,6 +83,7 @@ public class AlunoController {
     }
 
     @PatchMapping("/{id}/restaurar")
+    @PreAuthorize("hasAuthority('ALUNO_RESTAURAR_MOD')")
     public ResponseEntity<AlunoResponseDTO> restaurar(
             @PathVariable Long id) {
 

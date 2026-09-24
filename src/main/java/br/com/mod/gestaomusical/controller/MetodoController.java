@@ -5,7 +5,9 @@ import br.com.mod.gestaomusical.dto.MetodoResponseDTO;
 import br.com.mod.gestaomusical.service.MetodoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.util.List;
 
@@ -34,6 +36,7 @@ public class MetodoController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('PROGRESSO_MUSICAL_REGISTRAR')")
     public ResponseEntity<MetodoResponseDTO> salvar(
             @RequestBody MetodoRequestDTO dto) {
 

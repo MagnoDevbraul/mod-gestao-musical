@@ -63,11 +63,65 @@ public class ExclusaoAlunoService {
                 .map(this::converterParaDTO);
     }
 
+    /*
+     * Fluxo utilizado quando a exclusão ocorre no SAM.
+     *
+     * Secretaria, Encarregado Regional e Encarregado Local
+     * poderão executar essa operação.
+     *
+     * O aluno não é apagado fisicamente do MOD.
+     * Ele permanece com a situação ARQUIVADO para
+     * preservação de histórico, auditoria e registros musicais.
+     */
     @Transactional
-    public ExclusaoAlunoResponseDTO excluir(
+    public ExclusaoAlunoResponseDTO excluirNoSam(
             ExclusaoAlunoRequestDTO dto) {
 
+        return arquivar(
+                dto,
+                "EXCLUSAO_ALUNO_SAM",
+                "Aluno arquivado no MOD após exclusão no SAM.",
+                "Aluno excluído do SAM",
+                "Aluno arquivado no MOD após exclusão no SAM."
+        );
+    }
+
+    /*
+     * Fluxo de arquivamento direto no MOD.
+     *
+     * Somente a Secretaria possui autorização
+     * para executar essa operação.
+     */
+    @Transactional
+    public ExclusaoAlunoResponseDTO arquivarNoMod(
+            ExclusaoAlunoRequestDTO dto) {
+
+        return arquivar(
+                dto,
+                "ARQUIVAMENTO_ALUNO_MOD",
+                "Aluno arquivado diretamente no MOD.",
+                "Aluno arquivado no MOD",
+                "Aluno arquivado diretamente no MOD."
+        );
+    }
+
+    /*
+     * Implementação comum aos dois fluxos.
+     *
+     * A origem da operação muda, mas o resultado
+     * dentro do MOD é o mesmo:
+     *
+     * situacao = ARQUIVADO
+     */
+    private ExclusaoAlunoResponseDTO arquivar(
+            ExclusaoAlunoRequestDTO dto,
+            String tipoEvento,
+            String descricaoHistorico,
+            String tituloNotificacao,
+            String descricaoAuditoria) {
+
         if (dto.getAlunoId() == null) {
+
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Aluno é obrigatório"
@@ -89,7 +143,8 @@ public class ExclusaoAlunoService {
                         new ResponseStatusException(
                                 HttpStatus.NOT_FOUND,
                                 "Aluno não encontrado"
-                        ));
+                        )
+                );
 
         if ("ARQUIVADO".equalsIgnoreCase(
                 aluno.getSituacao())) {
@@ -102,7 +157,7 @@ public class ExclusaoAlunoService {
 
         /*
          * Usuário real que executou a operação.
-         * Obtido diretamente da autenticação.
+         * Obtido diretamente da sessão autenticada.
          */
         Usuario usuario =
                 usuarioAutenticadoService
@@ -111,8 +166,11 @@ public class ExclusaoAlunoService {
         String situacaoAnterior =
                 aluno.getSituacao();
 
+        String motivo =
+                dto.getMotivo().trim();
+
         /*
-         * 1. Arquivamento lógico do aluno.
+         * 1. Arquivamento lógico do aluno no MOD.
          */
         aluno.setSituacao("ARQUIVADO");
 
@@ -126,9 +184,7 @@ public class ExclusaoAlunoService {
 
         exclusao.setAluno(aluno);
         exclusao.setUsuario(usuario);
-        exclusao.setMotivo(
-                dto.getMotivo().trim()
-        );
+        exclusao.setMotivo(motivo);
 
         ExclusaoAluno exclusaoSalva =
                 exclusaoAlunoRepository
@@ -142,12 +198,10 @@ public class ExclusaoAlunoService {
 
         historico.setAluno(aluno);
         historico.setUsuario(usuario);
-        historico.setTipoEvento(
-                "EXCLUSAO_ALUNO"
-        );
+        historico.setTipoEvento(tipoEvento);
 
         historico.setDescricao(
-                "Aluno arquivado conforme registro de exclusão no MOD."
+                descricaoHistorico
         );
 
         historico.setValorAnterior(
@@ -168,18 +222,17 @@ public class ExclusaoAlunoService {
 
         notificacao.setUsuario(usuario);
         notificacao.setAluno(aluno);
-        notificacao.setTipoEvento(
-                "EXCLUSAO_ALUNO"
-        );
+        notificacao.setTipoEvento(tipoEvento);
 
         notificacao.setTitulo(
-                "Aluno arquivado"
+                tituloNotificacao
         );
 
         notificacao.setMensagem(
                 "O aluno "
                         + aluno.getNome()
-                        + " foi arquivado no MOD."
+                        + " foi arquivado no MOD. Motivo: "
+                        + motivo
         );
 
         notificacao.setLida(false);
@@ -189,14 +242,15 @@ public class ExclusaoAlunoService {
 
         /*
          * 5. Auditoria.
+         *
          * O AuditoriaService registra automaticamente
          * o usuário autenticado.
          */
         auditoriaService.registrar(
-                "EXCLUSAO_ALUNO",
+                tipoEvento,
                 "aluno",
                 aluno.getId(),
-                "Aluno arquivado no MOD por solicitação de exclusão.",
+                descricaoAuditoria,
                 Map.of(
                         "nome",
                         aluno.getNome(),
@@ -209,7 +263,7 @@ public class ExclusaoAlunoService {
                         "situacao",
                         "ARQUIVADO",
                         "motivo",
-                        dto.getMotivo().trim()
+                        motivo
                 )
         );
 

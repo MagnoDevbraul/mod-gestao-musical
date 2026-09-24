@@ -5,6 +5,7 @@ import br.com.mod.gestaomusical.dto.AlunoCompartilhamentoResponseDTO;
 import br.com.mod.gestaomusical.service.AlunoCompartilhamentoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,12 +22,25 @@ public class AlunoCompartilhamentoController {
         this.service = service;
     }
 
+    /*
+     * Consulta todos os compartilhamentos.
+     *
+     * Permitido para usuários que podem consultar alunos.
+     */
     @GetMapping
+    @PreAuthorize("hasAuthority('ALUNO_CONSULTAR')")
     public ResponseEntity<List<AlunoCompartilhamentoResponseDTO>> listarTodos() {
-        return ResponseEntity.ok(service.listarTodos());
+
+        return ResponseEntity.ok(
+                service.listarTodos()
+        );
     }
 
+    /*
+     * Consulta um compartilhamento pelo ID.
+     */
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('ALUNO_CONSULTAR')")
     public ResponseEntity<AlunoCompartilhamentoResponseDTO> buscarPorId(
             @PathVariable Long id) {
 
@@ -35,7 +49,11 @@ public class AlunoCompartilhamentoController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    /*
+     * Consulta o compartilhamento vinculado a um aluno.
+     */
     @GetMapping("/aluno/{alunoId}")
+    @PreAuthorize("hasAuthority('ALUNO_CONSULTAR')")
     public ResponseEntity<AlunoCompartilhamentoResponseDTO> buscarPorAluno(
             @PathVariable Long alunoId) {
 
@@ -44,7 +62,18 @@ public class AlunoCompartilhamentoController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    /*
+     * Compartilha um aluno com outra Comum.
+     *
+     * Permitido para:
+     * - Secretaria
+     * - Encarregado Regional
+     * - Encarregado Local
+     *
+     * Instrutor não possui ALUNO_COMPARTILHAR.
+     */
     @PostMapping
+    @PreAuthorize("hasAuthority('ALUNO_COMPARTILHAR')")
     public ResponseEntity<AlunoCompartilhamentoResponseDTO> compartilhar(
             @RequestBody AlunoCompartilhamentoRequestDTO dto) {
 

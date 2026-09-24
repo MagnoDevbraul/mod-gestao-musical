@@ -7,10 +7,7 @@ import br.com.mod.gestaomusical.entity.Historico;
 import br.com.mod.gestaomusical.entity.Notificacao;
 import br.com.mod.gestaomusical.entity.Usuario;
 import br.com.mod.gestaomusical.repository.AlunoRepository;
-import br.com.mod.gestaomusical.repository.CargoMinisterioRepository;
-import br.com.mod.gestaomusical.repository.ComumCongregacaoRepository;
 import br.com.mod.gestaomusical.repository.HistoricoRepository;
-import br.com.mod.gestaomusical.repository.NivelRepository;
 import br.com.mod.gestaomusical.repository.NotificacaoRepository;
 import br.com.mod.gestaomusical.security.UsuarioAutenticadoService;
 import org.springframework.http.HttpStatus;
@@ -25,9 +22,6 @@ import java.util.Map;
 public class AtualizacaoAlunoService {
 
     private final AlunoRepository alunoRepository;
-    private final ComumCongregacaoRepository comumRepository;
-    private final NivelRepository nivelRepository;
-    private final CargoMinisterioRepository cargoMinisterioRepository;
     private final HistoricoRepository historicoRepository;
     private final NotificacaoRepository notificacaoRepository;
     private final AuditoriaService auditoriaService;
@@ -35,36 +29,45 @@ public class AtualizacaoAlunoService {
 
     public AtualizacaoAlunoService(
             AlunoRepository alunoRepository,
-            ComumCongregacaoRepository comumRepository,
-            NivelRepository nivelRepository,
-            CargoMinisterioRepository cargoMinisterioRepository,
             HistoricoRepository historicoRepository,
             NotificacaoRepository notificacaoRepository,
             AuditoriaService auditoriaService,
             UsuarioAutenticadoService usuarioAutenticadoService) {
 
         this.alunoRepository = alunoRepository;
-        this.comumRepository = comumRepository;
-        this.nivelRepository = nivelRepository;
-        this.cargoMinisterioRepository = cargoMinisterioRepository;
         this.historicoRepository = historicoRepository;
         this.notificacaoRepository = notificacaoRepository;
         this.auditoriaService = auditoriaService;
         this.usuarioAutenticadoService = usuarioAutenticadoService;
     }
 
+    /*
+     * Atualização comum do aluno.
+     *
+     * Campos permitidos:
+     * - nome
+     * - possuiInstrumento
+     *
+     * Alterações de Comum, Nível, Cargo/Ministério,
+     * Data de Batismo e Data de Início no GEM são
+     * tratadas pelo fluxo de alteração restrita.
+     */
     @Transactional
     public AlunoResponseDTO atualizar(
             Long alunoId,
             AtualizarAlunoRequestDTO dto) {
 
         Aluno aluno = alunoRepository.findById(alunoId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Aluno não encontrado"
-                ));
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Aluno não encontrado"
+                        )
+                );
 
-        if ("ARQUIVADO".equalsIgnoreCase(aluno.getSituacao())) {
+        if ("ARQUIVADO".equalsIgnoreCase(
+                aluno.getSituacao())) {
+
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Aluno arquivado não pode ser alterado"
@@ -80,31 +83,6 @@ public class AtualizacaoAlunoService {
             );
         }
 
-        if (dto.getComumId() == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Comum é obrigatória"
-            );
-        }
-
-        if (dto.getNivelId() == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Nível é obrigatório"
-            );
-        }
-
-        if (dto.getCargoMinisterioId() == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Cargo ministerial é obrigatório"
-            );
-        }
-
-        /*
-         * Usuário real que executou a alteração.
-         * Obtido da autenticação do Spring Security.
-         */
         Usuario usuario =
                 usuarioAutenticadoService
                         .obterUsuarioAutenticado();
@@ -116,43 +94,10 @@ public class AtualizacaoAlunoService {
                 dto.getNome().trim()
         );
 
-        aluno.setComum(
-                comumRepository.findById(dto.getComumId())
-                        .orElseThrow(() -> new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Comum não encontrada"
-                        ))
-        );
-
-        aluno.setNivel(
-                nivelRepository.findById(dto.getNivelId())
-                        .orElseThrow(() -> new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Nível não encontrado"
-                        ))
-        );
-
-        aluno.setCargoMinisterio(
-                cargoMinisterioRepository
-                        .findById(dto.getCargoMinisterioId())
-                        .orElseThrow(() -> new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Cargo ministerial não encontrado"
-                        ))
-        );
-
         aluno.setPossuiInstrumento(
                 dto.getPossuiInstrumento() != null
                         ? dto.getPossuiInstrumento()
                         : false
-        );
-
-        aluno.setDataBatismo(
-                dto.getDataBatismo()
-        );
-
-        aluno.setDataInicioGem(
-                dto.getDataInicioGem()
         );
 
         Aluno alunoSalvo =
@@ -174,7 +119,7 @@ public class AtualizacaoAlunoService {
         );
 
         historico.setDescricao(
-                "Dados do aluno atualizados no MOD."
+                "Dados comuns do aluno atualizados no MOD."
         );
 
         historico.setValorAnterior(
@@ -204,7 +149,7 @@ public class AtualizacaoAlunoService {
         );
 
         notificacao.setMensagem(
-                "Os dados do aluno "
+                "Os dados comuns do aluno "
                         + alunoSalvo.getNome()
                         + " foram atualizados no MOD."
         );
@@ -216,19 +161,19 @@ public class AtualizacaoAlunoService {
 
         /*
          * Auditoria.
-         * O usuário também é obtido automaticamente
-         * pelo AuditoriaService.
          */
         auditoriaService.registrar(
                 "ATUALIZACAO_ALUNO",
                 "aluno",
                 alunoSalvo.getId(),
-                "Dados do aluno atualizados no MOD.",
+                "Dados comuns do aluno atualizados no MOD.",
                 dadosAnteriores,
                 dadosNovos
         );
 
-        return converterParaDTO(alunoSalvo);
+        return converterParaDTO(
+                alunoSalvo
+        );
     }
 
     private Map<String, Object> criarSnapshot(

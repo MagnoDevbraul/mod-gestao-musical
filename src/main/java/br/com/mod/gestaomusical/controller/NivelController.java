@@ -5,6 +5,7 @@ import br.com.mod.gestaomusical.entity.Nivel;
 import br.com.mod.gestaomusical.service.NivelService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -15,13 +16,18 @@ public class NivelController {
 
     private final NivelService service;
 
-    public NivelController(NivelService service) {
+    public NivelController(
+            NivelService service) {
+
         this.service = service;
     }
 
     @GetMapping
     public ResponseEntity<List<Nivel>> listarTodos() {
-        return ResponseEntity.ok(service.listarTodos());
+
+        return ResponseEntity.ok(
+                service.listarTodos()
+        );
     }
 
     @GetMapping("/{id}")
@@ -34,6 +40,9 @@ public class NivelController {
     }
 
     @PostMapping
+    @PreAuthorize(
+            "hasAuthority('NIVEL_CADASTRAR')"
+    )
     public ResponseEntity<Nivel> salvar(
             @RequestBody NivelRequestDTO dto) {
 
@@ -43,6 +52,9 @@ public class NivelController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize(
+            "hasAuthority('NIVEL_EDITAR')"
+    )
     public ResponseEntity<Nivel> atualizar(
             @PathVariable Long id,
             @RequestBody NivelRequestDTO dto) {

@@ -6,6 +6,7 @@ import br.com.mod.gestaomusical.service.EscalaService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.util.List;
 
@@ -34,6 +35,7 @@ public class EscalaController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('PROGRESSO_MUSICAL_REGISTRAR')")
     public ResponseEntity<EscalaResponseDTO> salvar(
             @RequestBody EscalaRequestDTO dto) {
 

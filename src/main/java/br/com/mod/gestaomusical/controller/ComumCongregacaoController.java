@@ -5,6 +5,7 @@ import br.com.mod.gestaomusical.entity.ComumCongregacao;
 import br.com.mod.gestaomusical.service.ComumCongregacaoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -23,7 +24,10 @@ public class ComumCongregacaoController {
 
     @GetMapping
     public ResponseEntity<List<ComumCongregacao>> listarTodos() {
-        return ResponseEntity.ok(service.listarTodos());
+
+        return ResponseEntity.ok(
+                service.listarTodos()
+        );
     }
 
     @GetMapping("/{id}")
@@ -36,6 +40,9 @@ public class ComumCongregacaoController {
     }
 
     @PostMapping
+    @PreAuthorize(
+            "hasAuthority('COMUM_CADASTRAR')"
+    )
     public ResponseEntity<ComumCongregacao> salvar(
             @RequestBody ComumCongregacaoRequestDTO dto) {
 
@@ -45,6 +52,9 @@ public class ComumCongregacaoController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize(
+            "hasAuthority('COMUM_EDITAR')"
+    )
     public ResponseEntity<ComumCongregacao> atualizar(
             @PathVariable Long id,
             @RequestBody ComumCongregacaoRequestDTO dto) {
