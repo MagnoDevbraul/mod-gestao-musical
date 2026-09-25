@@ -21,4 +21,8 @@ public interface SolicitacaoAlteracaoAlunoRepository
             Long alunoId,
             StatusSolicitacaoAlteracaoAluno status
     );
+
+    long countByStatus(
+            StatusSolicitacaoAlteracaoAluno status
+    );
 }

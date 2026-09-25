@@ -14,4 +14,7 @@ public interface HistoricoRepository
             Long alunoId,
             Collection<String> tiposEvento
     );
+
+    List<Historico>
+    findTop5ByOrderByDataHoraDesc();
 }

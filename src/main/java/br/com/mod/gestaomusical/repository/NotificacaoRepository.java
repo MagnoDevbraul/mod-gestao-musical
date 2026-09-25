@@ -5,9 +5,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
 
-public interface NotificacaoRepository extends JpaRepository<Notificacao, Long> {
+public interface NotificacaoRepository
+        extends JpaRepository<Notificacao, Long> {
 
-    Optional<Notificacao> findTopByAlunoIdAndUsuarioIdAndTipoEventoOrderByDataHoraDesc(
+    Optional<Notificacao>
+    findTopByAlunoIdAndUsuarioIdAndTipoEventoOrderByDataHoraDesc(
             Long alunoId,
             Long usuarioId,
             String tipoEvento
